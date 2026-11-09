@@ -411,11 +411,14 @@ private fun ReaderScreen(
                                 .enableSwipe(true)
                                 .swipeHorizontal(false)
                                 .enableDoubleTap(true)
-                                .enableAntialiasing(true)
-                                .autoSpacing(true)
+                                // Favor responsive scrolling on low/mid-range devices.
+                                // RGB_565 remains the library default to reduce bitmap memory.
+                                .enableAntialiasing(false)
+                                .autoSpacing(false)
                                 .pageSnap(false)
                                 .pageFling(false)
-                                .fitEachPage(true)
+                                .fitEachPage(false)
+                                .enableAnnotationRendering(false)
                                 .pageFitPolicy(FitPolicy.WIDTH)
                                 .nightMode(readingMode == ReadingMode.NIGHT)
                                 .onLoad(object : com.ahmer.pdfviewer.listener.OnLoadCompleteListener {
