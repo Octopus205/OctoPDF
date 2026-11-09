@@ -5,7 +5,7 @@ plugins {
 }
 android {
     namespace = "com.octopus.octopdf"
-    compileSdk = 35
+    compileSdk = 36
     defaultConfig {
         applicationId = "com.octopus.octopdf"
         minSdk = 26

@@ -239,6 +239,7 @@ private fun OctoPdfApp(incomingUri: Uri?) {
                     name = documentName,
                     uri = selectedUri!!,
                     state = openState,
+                    reloadKey = openAttempt,
                     modifier = Modifier.fillMaxSize().padding(padding),
                     onRetry = { openAttempt++ },
                     onClose = { selectedUri = null },
@@ -359,6 +360,7 @@ private fun ReaderScreen(
     uri: Uri,
     state: PdfOpenState,
     modifier: Modifier = Modifier,
+    reloadKey: Int,
     onRetry: () -> Unit,
     onClose: () -> Unit,
     onLoaded: () -> Unit,
@@ -402,7 +404,7 @@ private fun ReaderScreen(
         }
 
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            key(uri, readingMode) {
+            key(uri, readingMode, reloadKey) {
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
                     factory = { viewContext ->
