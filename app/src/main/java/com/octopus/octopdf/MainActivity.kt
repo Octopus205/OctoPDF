@@ -62,7 +62,7 @@ private val Cyan = Color(0xFF28D4E8)
 private val TextPrimary = Color(0xFFF3F7FC)
 private val TextMuted = Color(0xFFA9B9CA)
 
-private enum class ReadingMode { LIGHT, SEPIA, NIGHT }
+private enum class ReadingMode { LIGHT, NIGHT }
 
 private data class RecentDocument(val uri: Uri, val name: String)
 
@@ -357,11 +357,25 @@ private fun ReaderScreen(
     onLoaded: () -> Unit,
     onFailed: (String) -> Unit
 ) {
-    var pageNumber by remember(uri) { mutableIntStateOf(1) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val preferences by context.octoDataStore.data.collectAsState(initial = emptyPreferences())
+    val documentToken = remember(uri) {
+        Base64.encodeToString(uri.toString().toByteArray(Charsets.UTF_8), Base64.NO_WRAP or Base64.URL_SAFE)
+    }
+    val lastPageKey = remember(documentToken) { stringPreferencesKey("last_page_$documentToken") }
+    val bookmarksKey = remember(documentToken) { stringPreferencesKey("bookmarks_$documentToken") }
+    val resumePage = preferences[lastPageKey]?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+    val bookmarks = remember(preferences[bookmarksKey]) {
+        preferences[bookmarksKey].orEmpty().split(',').mapNotNull { it.toIntOrNull() }
+            .filter { it >= 0 }.distinct().sorted()
+    }
+    var pageNumber by remember(uri) { mutableIntStateOf(resumePage + 1) }
     var totalPages by remember(uri) { mutableIntStateOf(0) }
     var readingMode by remember(uri) { mutableStateOf(ReadingMode.LIGHT) }
     var controlsVisible by remember(uri) { mutableStateOf(true) }
     var menuExpanded by remember { mutableStateOf(false) }
+    var pdfView by remember(uri) { mutableStateOf<PDFView?>(null) }
 
     Column(modifier.background(Ink)) {
         if (controlsVisible) {
@@ -387,7 +401,32 @@ private fun ReaderScreen(
                         DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                             DropdownMenuItem(text = { Text("الوضع الفاتح") }, onClick = { readingMode = ReadingMode.LIGHT; menuExpanded = false })
                             DropdownMenuItem(text = { Text("الوضع الليلي") }, onClick = { readingMode = ReadingMode.NIGHT; menuExpanded = false })
-                            DropdownMenuItem(text = { Text("الوضع Sepia") }, onClick = { readingMode = ReadingMode.SEPIA; menuExpanded = false })
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text(if (pageNumber - 1 in bookmarks) "إزالة علامة الصفحة الحالية" else "إضافة علامة مرجعية للصفحة الحالية") },
+                                onClick = {
+                                    val pageIndex = (pageNumber - 1).coerceAtLeast(0)
+                                    val updated = if (pageIndex in bookmarks) bookmarks - pageIndex else (bookmarks + pageIndex).sorted()
+                                    scope.launch {
+                                        context.octoDataStore.edit { prefs ->
+                                            prefs[bookmarksKey] = updated.joinToString(",")
+                                        }
+                                    }
+                                    menuExpanded = false
+                                }
+                            )
+                            if (bookmarks.isNotEmpty()) {
+                                HorizontalDivider()
+                                bookmarks.forEach { pageIndex ->
+                                    DropdownMenuItem(
+                                        text = { Text("الانتقال إلى العلامة: صفحة ${pageIndex + 1}") },
+                                        onClick = {
+                                            pdfView?.jumpTo(pageIndex, true)
+                                            menuExpanded = false
+                                        }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -400,14 +439,13 @@ private fun ReaderScreen(
                     modifier = Modifier.fillMaxSize(),
                     factory = { viewContext ->
                         PDFView(viewContext, null).apply {
+                            pdfView = this
                             setBackgroundColor(
-                                when (readingMode) {
-                                    ReadingMode.LIGHT -> android.graphics.Color.rgb(32, 43, 55)
-                                    ReadingMode.NIGHT -> android.graphics.Color.rgb(12, 18, 26)
-                                    ReadingMode.SEPIA -> android.graphics.Color.rgb(85, 71, 53)
-                                }
+                                if (readingMode == ReadingMode.NIGHT) android.graphics.Color.rgb(12, 18, 26)
+                                else android.graphics.Color.rgb(32, 43, 55)
                             )
                             fromUri(uri)
+                                .defaultPage(resumePage)
                                 .enableSwipe(true)
                                 .swipeHorizontal(false)
                                 .enableDoubleTap(true)
@@ -431,6 +469,11 @@ private fun ReaderScreen(
                                     override fun onPageChanged(page: Int, pages: Int) {
                                         pageNumber = page + 1
                                         totalPages = pages
+                                        scope.launch {
+                                            context.octoDataStore.edit { prefs ->
+                                                prefs[lastPageKey] = page.toString()
+                                            }
+                                        }
                                     }
                                 })
                                 .onError(object : com.ahmer.pdfviewer.listener.OnErrorListener {
