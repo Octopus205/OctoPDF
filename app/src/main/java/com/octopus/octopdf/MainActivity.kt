@@ -1,10 +1,15 @@
 package com.octopus.octopdf
 
+import android.content.Context
 import android.content.Intent
+import android.database.Cursor
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Bundle
+import android.provider.OpenableColumns
+import android.util.Base64
+import android.util.LruCache
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -16,49 +21,166 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PictureAsPdf
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val android.content.Context.octoDataStore by preferencesDataStore(name = "octopdf_settings")
+private val Context.octoDataStore by preferencesDataStore(name = "octopdf_settings")
 private val RECENT_KEY = stringPreferencesKey("recent_documents")
-private val Ink = Color(0xFF101820)
-private val Navy = Color(0xFF142B45)
-private val Blue = Color(0xFF4C9BE8)
-private val Panel = Color(0xFF1B2938)
+
+private val Ink = Color(0xFF0B1420)
+private val Navy = Color(0xFF102A46)
+private val Panel = Color(0xFF172B40)
+private val PanelLight = Color(0xFF203A54)
+private val Accent = Color(0xFF39A9F5)
+private val Cyan = Color(0xFF28D4E8)
+private val TextPrimary = Color(0xFFF3F7FC)
+private val TextMuted = Color(0xFFA9B9CA)
+
+private data class RecentDocument(val uri: Uri, val name: String)
+
+private sealed interface PdfOpenState {
+    data object Idle : PdfOpenState
+    data object Loading : PdfOpenState
+    data class Ready(val session: PdfSession) : PdfOpenState
+    data class Failed(val message: String) : PdfOpenState
+}
+
+private data class PageRenderState(val bitmap: Bitmap? = null, val error: String? = null)
+
+private class PdfSession private constructor(
+    private val descriptor: android.os.ParcelFileDescriptor,
+    private val renderer: PdfRenderer,
+    val pageCount: Int,
+    private val cachePrefix: String
+) {
+    private val lock = Any()
+    private var closed = false
+
+    fun renderPage(index: Int, targetWidth: Int): Bitmap {
+        require(index in 0 until pageCount) { "رقم الصفحة غير صحيح" }
+        val width = targetWidth.coerceIn(480, 1600)
+        val key = "$cachePrefix:$index:$width"
+        pageBitmapCache.get(key)?.let { return it }
+
+        return synchronized(lock) {
+            check(!closed) { "تم إغلاق المستند" }
+            pageBitmapCache.get(key)?.let { return@synchronized it }
+            renderer.openPage(index).use { page ->
+                val height = (page.height.toFloat() * width / page.width).toInt().coerceAtLeast(1)
+                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                bitmap.eraseColor(android.graphics.Color.WHITE)
+                page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                pageBitmapCache.put(key, bitmap)
+                bitmap
+            }
+        }
+    }
+
+    fun close() {
+        synchronized(lock) {
+            if (!closed) {
+                closed = true
+                runCatching { renderer.close() }
+                runCatching { descriptor.close() }
+            }
+        }
+    }
+
+    companion object {
+        private val pageBitmapCache = object : LruCache<String, Bitmap>(24 * 1024 * 1024) {
+            override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
+        }
+
+        fun open(context: Context, uri: Uri): PdfSession {
+            val descriptor = context.contentResolver.openFileDescriptor(uri, "r")
+                ?: throw IllegalStateException("لم يتمكن أندرويد من فتح الملف. جرّب اختيار الملف مرة أخرى.")
+            try {
+                val renderer = PdfRenderer(descriptor)
+                return PdfSession(descriptor, renderer, renderer.pageCount, uri.toString())
+            } catch (error: Exception) {
+                descriptor.close()
+                throw error
+            }
+        }
+    }
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { OctoPdfApp(intent?.data) }
+        val incoming = intent?.data
+        if (incoming != null) {
+            runCatching {
+                contentResolver.takePersistableUriPermission(
+                    incoming,
+                    intent.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                )
+            }
+        }
+        setContent { OctoPdfApp(incoming) }
     }
 }
 
-private data class RecentDocument(val uri: Uri, val name: String)
+private fun queryDisplayName(context: Context, uri: Uri): String {
+    var cursor: Cursor? = null
+    return try {
+        cursor = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+        if (cursor != null && cursor.moveToFirst()) {
+            val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (index >= 0) cursor.getString(index)?.takeIf { it.isNotBlank() } ?: "مستند PDF" else "مستند PDF"
+        } else {
+            uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: "مستند PDF"
+        }
+    } catch (_: Exception) {
+        uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: "مستند PDF"
+    } finally {
+        cursor?.close()
+    }
+}
+
+private fun encodeRecent(uri: Uri, name: String): String {
+    val encodedName = Base64.encodeToString(name.toByteArray(Charsets.UTF_8), Base64.NO_WRAP or Base64.URL_SAFE)
+    return uri.toString() + "\t" + encodedName
+}
+
+private fun decodeRecent(raw: String): RecentDocument? {
+    val split = raw.split("\t", limit = 2)
+    if (split.size != 2) return null
+    return runCatching {
+        RecentDocument(Uri.parse(split[0]), String(Base64.decode(split[1], Base64.NO_WRAP or Base64.URL_SAFE), Charsets.UTF_8))
+    }.getOrNull()
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -66,24 +188,22 @@ private fun OctoPdfApp(incomingUri: Uri?) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var selectedUri by remember { mutableStateOf(incomingUri) }
-    var documentName by remember { mutableStateOf(incomingUri?.lastPathSegment?.substringAfterLast('/') ?: "") }
-    var pageCount by remember { mutableIntStateOf(0) }
-    var loading by remember { mutableStateOf(false) }
-    var openError by remember { mutableStateOf<String?>(null) }
+    var documentName by remember { mutableStateOf(incomingUri?.let { queryDisplayName(context, it) }.orEmpty()) }
+    var openState by remember { mutableStateOf<PdfOpenState>(PdfOpenState.Idle) }
+    var openAttempt by remember { mutableIntStateOf(0) }
     val listState = rememberLazyListState()
+
     val recentRaw by context.octoDataStore.data.collectAsState(initial = emptyPreferences())
     val recentDocuments = remember(recentRaw) {
-        recentRaw[RECENT_KEY].orEmpty().split("\n").filter { it.isNotBlank() }.mapNotNull { entry ->
-            val split = entry.split("\t", limit = 2)
-            if (split.size == 2) runCatching { RecentDocument(Uri.parse(split[0]), split[1]) }.getOrNull() else null
-        }
+        recentRaw[RECENT_KEY].orEmpty().lineSequence().mapNotNull(::decodeRecent).toList()
     }
 
     fun rememberDocument(uri: Uri, name: String) {
         scope.launch {
             context.octoDataStore.edit { prefs ->
-                val value = "${uri}\t${name}"
-                val updated = (listOf(value) + prefs[RECENT_KEY].orEmpty().split("\n").filter { it.isNotBlank() && it.substringBefore("\t") != uri.toString() }).take(20)
+                val value = encodeRecent(uri, name)
+                val updated = (listOf(value) + prefs[RECENT_KEY].orEmpty().lineSequence()
+                    .filter { it.isNotBlank() && it.substringBefore("\t") != uri.toString() }.toList()).take(30)
                 prefs[RECENT_KEY] = updated.joinToString("\n")
             }
         }
@@ -92,68 +212,81 @@ private fun OctoPdfApp(incomingUri: Uri?) {
     fun openDocument(uri: Uri, name: String) {
         selectedUri = uri
         documentName = name
-        pageCount = 0
-        openError = null
+        openAttempt++
         rememberDocument(uri, name)
     }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
-            try {
-                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            } catch (_: SecurityException) { }
-            val name = uri.lastPathSegment?.substringAfterLast('/') ?: "document.pdf"
-            openDocument(uri, name)
+            runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            openDocument(uri, queryDisplayName(context, uri))
         }
     }
 
-    LaunchedEffect(selectedUri) {
-        val uri = selectedUri ?: return@LaunchedEffect
-        loading = true
-        openError = null
+    LaunchedEffect(selectedUri, openAttempt) {
+        val uri = selectedUri
+        if (uri == null) {
+            openState = PdfOpenState.Idle
+            return@LaunchedEffect
+        }
+        openState = PdfOpenState.Loading
         try {
-            pageCount = withContext(Dispatchers.IO) {
-                val descriptor = context.contentResolver.openFileDescriptor(uri, "r")
-                    ?: throw IllegalStateException("تعذر فتح الملف")
-                descriptor.use { PdfRenderer(it).use { renderer -> renderer.pageCount } }
+            val session = withContext(Dispatchers.IO) { PdfSession.open(context, uri) }
+            if (documentName.isBlank()) documentName = withContext(Dispatchers.IO) { queryDisplayName(context, uri) }
+            openState = if (session.pageCount > 0) PdfOpenState.Ready(session) else {
+                session.close()
+                PdfOpenState.Failed("هذا الملف لا يحتوي على صفحات قابلة للعرض.")
             }
             listState.scrollToItem(0)
-        } catch (e: Exception) {
-            openError = e.message ?: "تعذر قراءة ملف PDF"
-        } finally {
-            loading = false
+        } catch (error: Exception) {
+            openState = PdfOpenState.Failed(
+                error.message?.takeIf { it.isNotBlank() } ?: "تعذر فتح ملف PDF. تأكد أن الملف سليم وأن لديك صلاحية الوصول إليه."
+            )
         }
     }
 
-    MaterialTheme(colorScheme = darkColorScheme(
-        primary = Blue, onPrimary = Color.White, background = Ink,
-        surface = Panel, onSurface = Color(0xFFEAF1F8)
-    )) {
+    DisposableEffect(openState) {
+        val active = (openState as? PdfOpenState.Ready)?.session
+        onDispose { active?.close() }
+    }
+
+    MaterialTheme(
+        colorScheme = darkColorScheme(
+            primary = Accent, secondary = Cyan, background = Ink, surface = Panel,
+            surfaceVariant = PanelLight, onPrimary = Color.White, onBackground = TextPrimary,
+            onSurface = TextPrimary, onSurfaceVariant = TextMuted
+        )
+    ) {
         Scaffold(
+            containerColor = Ink,
             topBar = {
                 TopAppBar(
                     title = {
-                        Column {
-                            Text(if (selectedUri == null) "OctoPDF" else documentName, maxLines = 1, fontWeight = FontWeight.Bold, fontSize = 19.sp)
-                            Text(if (selectedUri == null) "قارئ PDF بدون إنترنت" else "عارض المستند", fontSize = 11.sp, color = Color.LightGray)
+                        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                            Text(
+                                if (selectedUri == null) "OctoPDF" else documentName,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                fontWeight = FontWeight.Bold, fontSize = 19.sp
+                            )
+                            Text(
+                                if (selectedUri == null) "مساحة ملفات PDF الخاصة بك" else "عارض المستند",
+                                color = TextMuted, fontSize = 11.sp
+                            )
                         }
                     },
                     navigationIcon = {
-                        if (selectedUri != null) {
-                            IconButton(onClick = { selectedUri = null; pageCount = 0 }) {
-                                Icon(Icons.Default.ArrowBack, contentDescription = "رجوع", tint = Color.White)
-                            }
+                        if (selectedUri != null) IconButton(onClick = { selectedUri = null }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
                         }
                     },
                     actions = {
                         IconButton(onClick = { picker.launch(arrayOf("application/pdf")) }) {
-                            Icon(Icons.Default.FolderOpen, contentDescription = "فتح ملف", tint = Color.White)
+                            Icon(Icons.Default.FolderOpen, contentDescription = "فتح ملف PDF")
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Navy)
                 )
-            },
-            containerColor = Ink
+            }
         ) { padding ->
             if (selectedUri == null) {
                 HomeScreen(
@@ -164,13 +297,12 @@ private fun OctoPdfApp(incomingUri: Uri?) {
                 )
             } else {
                 ReaderScreen(
-                    uri = selectedUri!!,
-                    pageCount = pageCount,
-                    loading = loading,
-                    error = openError,
+                    name = documentName,
+                    state = openState,
                     listState = listState,
                     modifier = Modifier.fillMaxSize().padding(padding),
-                    onClose = { selectedUri = null; pageCount = 0 }
+                    onRetry = { openAttempt++ },
+                    onClose = { selectedUri = null }
                 )
             }
         }
@@ -184,108 +316,165 @@ private fun HomeScreen(
     onOpen: (RecentDocument) -> Unit,
     onPick: () -> Unit
 ) {
-    LazyColumn(
-        modifier = modifier.padding(horizontal = 18.dp),
-        contentPadding = PaddingValues(top = 26.dp, bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = Navy)
-            ) {
-                Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Icon(Icons.Default.PictureAsPdf, null, tint = Blue, modifier = Modifier.size(44.dp))
-                    Text("اقرأ ملفاتك بطريقتك", fontSize = 23.sp, fontWeight = FontWeight.Bold)
-                    Text("افتح مستندات PDF واقرأها بسهولة، مع تجربة مصممة للهواتف والتابلت.", color = Color(0xFFCBD8E6))
-                    Button(onClick = onPick, modifier = Modifier.fillMaxWidth()) {
-                        Icon(Icons.Default.FolderOpen, null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("فتح ملف PDF")
-                    }
-                }
-            }
-        }
-        item { Text("المستندات الأخيرة", fontWeight = FontWeight.Bold, fontSize = 18.sp) }
-        if (recent.isEmpty()) {
-            item { Text("لا توجد ملفات حديثة بعد. افتح أول ملف PDF للبدء.", color = Color.LightGray) }
-        } else {
-            items(recent, key = { it.uri.toString() }) { doc ->
+    BoxWithConstraints(modifier.background(Ink)) {
+        val tablet = maxWidth >= 600.dp
+        val contentWidth = if (tablet) 720.dp else maxWidth
+        LazyColumn(
+            modifier = Modifier.widthIn(max = contentWidth).align(Alignment.TopCenter).fillMaxWidth()
+                .padding(horizontal = if (tablet) 28.dp else 18.dp),
+            contentPadding = PaddingValues(top = 22.dp, bottom = 36.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            item {
                 Card(
-                    onClick = { onOpen(doc) },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Panel)
+                    shape = RoundedCornerShape(28.dp),
+                    colors = CardDefaults.cardColors(containerColor = Navy),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
                 ) {
-                    Row(Modifier.padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.PictureAsPdf, null, tint = Blue, modifier = Modifier.size(30.dp))
-                        Spacer(Modifier.width(12.dp))
-                        Text(doc.name, modifier = Modifier.weight(1f), maxLines = 2, fontWeight = FontWeight.Medium)
-                        Icon(Icons.Default.ArrowForward, null, tint = Color.LightGray)
+                    Column(Modifier.padding(if (tablet) 30.dp else 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Box(Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)).background(PanelLight), contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.PictureAsPdf, null, tint = Accent, modifier = Modifier.size(30.dp))
+                            }
+                            Column {
+                                Text("مرحباً بك في OctoPDF", fontWeight = FontWeight.Bold, fontSize = 19.sp)
+                                Text("قارئ PDF يعمل بدون إنترنت", color = TextMuted, fontSize = 12.sp)
+                            }
+                        }
+                        Text("ملفاتك، مرتبة. وقراءتك، أسهل.", fontSize = if (tablet) 28.sp else 24.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            "افتح مستنداتك واقرأها في مساحة هادئة، مع الاحتفاظ بملفاتك الأخيرة على جهازك.",
+                            color = Color(0xFFD0DCE8), lineHeight = 23.sp
+                        )
+                        Button(onClick = onPick, modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(16.dp)) {
+                            Icon(Icons.Default.FolderOpen, null)
+                            Spacer(Modifier.width(10.dp))
+                            Text("اختيار ملف PDF", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        }
                     }
                 }
             }
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("المستندات الأخيرة", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                        Text(recent.size.toString() + " مستند محفوظ في القائمة", color = TextMuted, fontSize = 12.sp)
+                    }
+                    Surface(color = Panel, shape = CircleShape) {
+                        Icon(Icons.Default.Description, null, tint = Accent, modifier = Modifier.padding(10.dp).size(20.dp))
+                    }
+                }
+            }
+            if (recent.isEmpty()) {
+                item {
+                    Surface(color = Panel, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            Modifier.fillMaxWidth().padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(Icons.Default.Book, null, tint = TextMuted, modifier = Modifier.size(36.dp))
+                            Text("لا توجد مستندات بعد", fontWeight = FontWeight.SemiBold)
+                            Text("اختر ملف PDF من جهازك وسيظهر هنا تلقائياً.", color = TextMuted, fontSize = 13.sp)
+                        }
+                    }
+                }
+            } else {
+                items(recent, key = { it.uri.toString() }) { doc ->
+                    Card(
+                        onClick = { onOpen(doc) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(containerColor = Panel)
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 15.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            Box(Modifier.size(46.dp).clip(RoundedCornerShape(13.dp)).background(PanelLight), contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.PictureAsPdf, null, tint = Accent, modifier = Modifier.size(27.dp))
+                            }
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text(doc.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+                                Text("مستند PDF", color = TextMuted, fontSize = 11.sp)
+                            }
+                            Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = Accent)
+                        }
+                    }
+                }
+            }
+            item {
+                Text("OctoPDF  •  قارئ ومحرر PDF", color = TextMuted, fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+            }
         }
-        item { Text("OctoPDF  •  الإصدار 0.2.0", color = Color.Gray, fontSize = 12.sp) }
     }
 }
 
 @Composable
 private fun ReaderScreen(
-    uri: Uri,
-    pageCount: Int,
-    loading: Boolean,
-    error: String?,
+    name: String,
+    state: PdfOpenState,
     listState: androidx.compose.foundation.lazy.LazyListState,
     modifier: Modifier = Modifier,
+    onRetry: () -> Unit,
     onClose: () -> Unit
 ) {
-    val currentPage by remember { derivedStateOf { (listState.firstVisibleItemIndex + 1).coerceAtMost(pageCount.coerceAtLeast(1)) } }
+    val session = (state as? PdfOpenState.Ready)?.session
+    val pageCount = session?.pageCount ?: 0
+    val currentPage by remember { derivedStateOf { (listState.firstVisibleItemIndex + 1).coerceIn(1, pageCount.coerceAtLeast(1)) } }
     val scope = rememberCoroutineScope()
+    val configuration = LocalConfiguration.current
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val targetWidth = with(density) { (configuration.screenWidthDp.dp - 36.dp).roundToPx().coerceIn(480, 1600) }
+
     Column(modifier.background(Ink)) {
-        Row(
-            Modifier.fillMaxWidth().background(Panel).padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(if (pageCount > 0) "صفحة $currentPage من $pageCount" else "جارٍ تجهيز المستند", fontWeight = FontWeight.SemiBold)
-                Text("اسحب للتمرير • استخدم إصبعين للتكبير", fontSize = 11.sp, color = Color.LightGray)
-            }
-            IconButton(onClick = { onClose() }) { Icon(Icons.Default.Close, contentDescription = "إغلاق") }
-        }
-        when {
-            loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            error != null -> Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                Text(error, color = MaterialTheme.colorScheme.error)
-            }
-            pageCount == 0 -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("المستند لا يحتوي على صفحات قابلة للعرض.")
-            }
-            else -> {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(pageCount, key = { it }) { index ->
-                        PdfPageItem(uri = uri, pageIndex = index)
+        if (session != null) {
+            Surface(color = Panel, tonalElevation = 1.dp) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("صفحة $currentPage من $pageCount", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Text(name, color = TextMuted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
+                    IconButton(enabled = currentPage > 1, onClick = { scope.launch { listState.animateScrollToItem(currentPage - 2) } }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "الصفحة السابقة")
+                    }
+                    IconButton(enabled = currentPage < pageCount, onClick = { scope.launch { listState.animateScrollToItem(currentPage) } }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "الصفحة التالية")
+                    }
+                    IconButton(onClick = onClose) { Icon(Icons.Default.MoreVert, contentDescription = "إغلاق المستند") }
                 }
-                Row(
-                    Modifier.fillMaxWidth().background(Navy).padding(horizontal = 12.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(
-                        enabled = currentPage > 1,
-                        onClick = { scope.launch { listState.animateScrollToItem((currentPage - 2).coerceAtLeast(0)) } }
-                    ) { Icon(Icons.Default.ArrowBack, contentDescription = "الصفحة السابقة") }
-                    Text("$currentPage / $pageCount", fontWeight = FontWeight.SemiBold)
-                    IconButton(
-                        enabled = currentPage < pageCount,
-                        onClick = { scope.launch { listState.animateScrollToItem((currentPage).coerceAtMost(pageCount - 1)) } }
-                    ) { Icon(Icons.Default.ArrowForward, contentDescription = "الصفحة التالية") }
+            }
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(pageCount, key = { index -> session.hashCode().toString() + "-" + index }) { index ->
+                    PdfPageItem(session, index, targetWidth)
+                }
+            }
+        } else {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                when (state) {
+                    PdfOpenState.Idle, PdfOpenState.Loading -> Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        CircularProgressIndicator(color = Accent)
+                        Text("جارٍ فتح المستند وتجهيز الصفحات…", color = TextMuted)
+                    }
+                    is PdfOpenState.Failed -> Column(
+                        Modifier.fillMaxWidth().padding(28.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Icon(Icons.Default.PictureAsPdf, null, tint = Accent, modifier = Modifier.size(48.dp))
+                        Text("تعذر فتح المستند", fontWeight = FontWeight.Bold, fontSize = 19.sp)
+                        Text(state.message, color = TextMuted)
+                        Button(onClick = onRetry) { Text("إعادة المحاولة") }
+                        TextButton(onClick = onClose) { Text("العودة إلى الملفات") }
+                    }
+                    is PdfOpenState.Ready -> Unit
                 }
             }
         }
@@ -293,55 +482,41 @@ private fun ReaderScreen(
 }
 
 @Composable
-private fun PdfPageItem(uri: Uri, pageIndex: Int) {
-    val context = LocalContext.current
-    var bitmap by remember(uri, pageIndex) { mutableStateOf<Bitmap?>(null) }
-    var error by remember(uri, pageIndex) { mutableStateOf(false) }
-    var zoom by remember(uri, pageIndex) { mutableFloatStateOf(1f) }
-
-    LaunchedEffect(uri, pageIndex) {
-        try {
-            bitmap = withContext(Dispatchers.IO) {
-                val descriptor = context.contentResolver.openFileDescriptor(uri, "r")
-                    ?: throw IllegalStateException("Cannot open PDF")
-                descriptor.use { pfd ->
-                    PdfRenderer(pfd).use { renderer ->
-                        renderer.openPage(pageIndex).use { page ->
-                            val width = 1200
-                            val height = (page.height * width.toFloat() / page.width).toInt().coerceAtLeast(1)
-                            val image = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                            image.eraseColor(android.graphics.Color.WHITE)
-                            page.render(image, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                            image
-                        }
-                    }
-                }
-            }
-        } catch (_: Exception) { error = true }
+private fun PdfPageItem(session: PdfSession, pageIndex: Int, targetWidth: Int) {
+    var zoom by remember(session, pageIndex) { mutableFloatStateOf(1f) }
+    val result by produceState(
+        initialValue = PageRenderState(),
+        key1 = session, key2 = pageIndex, key3 = targetWidth
+    ) {
+        value = try {
+            PageRenderState(bitmap = withContext(Dispatchers.IO) { session.renderPage(pageIndex, targetWidth) })
+        } catch (error: Exception) {
+            PageRenderState(error = error.message ?: "تعذر رسم الصفحة")
+        }
     }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White)
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
     ) {
         when {
-            bitmap != null -> Image(
-                bitmap = bitmap!!.asImageBitmap(),
-                contentDescription = "صفحة ${pageIndex + 1}",
+            result.bitmap != null -> Image(
+                bitmap = result.bitmap!!.asImageBitmap(),
+                contentDescription = "صفحة " + (pageIndex + 1),
+                contentScale = ContentScale.FillWidth,
                 modifier = Modifier.fillMaxWidth()
                     .graphicsLayer(scaleX = zoom, scaleY = zoom)
-                    .pointerInput(pageIndex) {
-                        detectTransformGestures { _, _, scaleChange, _ ->
-                            zoom = (zoom * scaleChange).coerceIn(1f, 4f)
-                        }
+                    .pointerInput(session, pageIndex) {
+                        detectTransformGestures { _, _, scaleChange, _ -> zoom = (zoom * scaleChange).coerceIn(1f, 4f) }
                     }
             )
-            error -> Box(Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.Center) {
-                Text("تعذر تحميل الصفحة ${pageIndex + 1}", color = Color.DarkGray)
+            result.error != null -> Box(Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.Center) {
+                Text("تعذر تحميل الصفحة " + (pageIndex + 1) + ": " + result.error, color = Color.DarkGray)
             }
-            else -> Box(Modifier.fillMaxWidth().height(220.dp), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+            else -> Box(Modifier.fillMaxWidth().height(240.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = Accent)
             }
         }
     }
