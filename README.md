@@ -1,5 +1,9 @@
 # OctoPDF
 
+<p align="center">
+  <img src="docs/octopdf-icon.svg" alt="OctoPDF app icon" width="220" />
+</p>
+
 **Offline-first PDF reader and editor for Android phones and tablets.**
 
 OctoPDF is built with Kotlin, Jetpack Compose and Android's native PDF renderer. The project targets Android 8.0 (API 26) and supports 32-bit and 64-bit ARM devices.

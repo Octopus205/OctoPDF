@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+<defs>
+ <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#0754d9"/><stop offset=".52" stop-color="#061a55"/><stop offset="1" stop-color="#02091f"/></linearGradient>
+ <linearGradient id="paper" x1="0" y1="0" x2=".9" y2="1"><stop stop-color="#fff"/><stop offset="1" stop-color="#dceaff"/></linearGradient>
+ <linearGradient id="blue" x1="0" y1="0" x2="1" y2=".8"><stop stop-color="#08d5f5"/><stop offset=".48" stop-color="#087cfb"/><stop offset="1" stop-color="#0634c5"/></linearGradient>
+ <linearGradient id="tag" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08c9f5"/><stop offset=".55" stop-color="#0867f3"/><stop offset="1" stop-color="#062eaa"/></linearGradient>
+ <filter id="shadow" x="-30%" y="-30%" width="160%" height="170%"><feGaussianBlur stdDeviation="13"/></filter>
+</defs>
+<rect width="512" height="512" rx="76" fill="url(#bg)"/>
+<rect x="2" y="2" width="508" height="508" rx="74" fill="none" stroke="#0877ff" stroke-width="4" opacity=".85"/>
+<path d="M119 83Q119 52 151 52H332L421 143V414H119Z" fill="#000b35" opacity=".5" filter="url(#shadow)"/>
+<path d="M119 83Q119 52 151 52H332L421 143V414H119Z" fill="url(#paper)"/>
+<path d="M332 52V119Q332 143 356 143H421Z" fill="#65dfff"/>
+<path d="M332 52L421 143H356Q332 143 332 119Z" fill="#0b58e8"/>
+<path d="M95 115Q95 90 121 90H277Q304 90 304 116V162Q304 188 278 188H121Q95 188 95 162Z" fill="url(#tag)"/>
+<g fill="#fff"><path d="M132 111h29q26 0 26 22t-26 22h-11v20h-18zm18 14v16h10q9 0 9-8t-9-8z"/><path d="M195 111h28q35 0 35 32t-35 32h-28zm18 15v34h9q17 0 17-17t-17-17z"/><path d="M267 111h35v15h-17v12h16v14h-16v13h-18z"/></g>
+<!-- Faceless octopus head -->
+<path d="M211 279C211 235 238 207 276 207S341 237 341 279c0 22-9 37-22 53-8 10-10 20-10 31h-68c0-13-4-23-13-35-11-14-17-28-17-49Z" fill="url(#blue)"/>
+<!-- Eight flowing arms, clean and balanced -->
+<g fill="none" stroke="url(#blue)" stroke-width="27" stroke-linecap="round" stroke-linejoin="round">
+ <path d="M224 302C191 300 184 276 157 269c-25-7-43 13-29 32 8 10 22 11 30 2-2 24-34 30-48 10-18-26 3-60 36-61 33-1 49 26 73 34"/>
+ <path d="M326 302c33-2 40-26 67-33 25-7 43 13 29 32-8 10-22 11-30 2 2 24 34 30 48 10 18-26-3-60-36-61-33-1-49 26-73 34"/>
+ <path d="M222 324c-30 22-55 18-77 11-24-8-39 15-21 31 11 10 27 5 29-7 7 25-23 39-43 23-25-20-12-56 20-61 34-5 54 12 96-1"/>
+ <path d="M328 324c30 22 55 18 77 11 24-8 39 15 21 31-11 10-27 5-29-7-7 25 23 39 43 23 25-20 12-56-20-61-34-5-54 12-96-1"/>
+ <path d="M238 348c-20 31-47 42-67 36-22-7-34 15-18 29 11 10 25 4 25-8 10 24-16 40-36 27-27-18-19-52 9-65 30-14 54 1 91-19"/>
+ <path d="M312 348c20 31 47 42 67 36 22-7 34 15 18 29-11 10-25 4-25-8-10 24 16 40 36 27 27-18 19-52-9-65-30-14-54 1-91-19"/>
+ <path d="M255 357c-3 29-20 50-40 57-21 7-20 32 0 38 14 4 25-8 20-20 19 17 43 0 35-23-6-18-16-28-15-52"/>
+ <path d="M289 357c3 29 20 50 40 57 21 7 20 32 0 38-14 4-25-8-20-20-19 17-43 0-35-23 6-18 16-28 15-52"/>
+</g>
+</svg>
