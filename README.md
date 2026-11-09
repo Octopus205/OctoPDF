@@ -1,7 +1,7 @@
 # OctoPDF
 
 <p align="center">
-  <img src="docs/octopdf-icon.svg" alt="OctoPDF app icon" width="220" />
+  <img src="docs/OctoPDF_icon.png" alt="OctoPDF app icon" width="220" />
 </p>
 
 **Offline-first PDF reader and editor for Android phones and tablets.**
