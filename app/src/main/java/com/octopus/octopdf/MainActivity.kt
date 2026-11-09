@@ -41,7 +41,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.calculateZoom
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.ui.layout.ContentScale
@@ -576,9 +575,16 @@ private fun PdfPageItem(
                             awaitFirstDown(requireUnconsumed = false)
                             do {
                                 val event = awaitPointerEvent()
-                                if (event.changes.count { it.pressed } >= 2) {
-                                    zoom = (zoom * event.calculateZoom()).coerceIn(1f, 4f)
-                                    event.changes.forEach { it.consume() }
+                                val activePointers = event.changes.filter { it.pressed }
+                                if (activePointers.size >= 2) {
+                                    val first = activePointers[0]
+                                    val second = activePointers[1]
+                                    val previousDistance = (first.previousPosition - second.previousPosition).getDistance()
+                                    val currentDistance = (first.position - second.position).getDistance()
+                                    if (previousDistance > 0f && currentDistance > 0f) {
+                                        zoom = (zoom * (currentDistance / previousDistance)).coerceIn(1f, 4f)
+                                    }
+                                    activePointers.forEach { it.consume() }
                                 }
                             } while (event.changes.any { it.pressed })
                         }
