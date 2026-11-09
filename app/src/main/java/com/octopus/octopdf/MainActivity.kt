@@ -16,7 +16,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -40,6 +41,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.calculateZoom
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -66,6 +70,8 @@ private val Accent = Color(0xFF39A9F5)
 private val Cyan = Color(0xFF28D4E8)
 private val TextPrimary = Color(0xFFF3F7FC)
 private val TextMuted = Color(0xFFA9B9CA)
+
+private enum class ReadingMode { LIGHT, SEPIA, NIGHT }
 
 private data class RecentDocument(val uri: Uri, val name: String)
 
@@ -245,6 +251,18 @@ private fun OctoPdfApp(incomingUri: Uri?) {
         }
     }
 
+    val activity = context as? ComponentActivity
+    DisposableEffect(selectedUri, activity) {
+        val controller = activity?.window?.let { WindowInsetsControllerCompat(it, it.decorView) }
+        if (selectedUri != null) {
+            controller?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller?.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller?.show(WindowInsetsCompat.Type.systemBars())
+        }
+        onDispose { controller?.show(WindowInsetsCompat.Type.systemBars()) }
+    }
+
     DisposableEffect(openState) {
         val active = (openState as? PdfOpenState.Ready)?.session
         onDispose { active?.close() }
@@ -260,7 +278,7 @@ private fun OctoPdfApp(incomingUri: Uri?) {
         Scaffold(
             containerColor = Ink,
             topBar = {
-                TopAppBar(
+                if (selectedUri == null) TopAppBar(
                     title = {
                         Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                             Text(
@@ -428,14 +446,18 @@ private fun ReaderScreen(
     val configuration = LocalConfiguration.current
     val density = androidx.compose.ui.platform.LocalDensity.current
     val targetWidth = with(density) { (configuration.screenWidthDp.dp - 36.dp).roundToPx().coerceIn(480, 1600) }
+    var readingMode by remember(session) { mutableStateOf(ReadingMode.LIGHT) }
+    var settingsExpanded by remember { mutableStateOf(false) }
 
-    Column(modifier.background(Ink)) {
+    BoxWithConstraints(modifier.background(Ink)) {
+        val compactLandscape = maxWidth > maxHeight
+        Column(Modifier.fillMaxSize()) {
         if (session != null) {
             Surface(color = Panel, tonalElevation = 1.dp) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = if (compactLandscape) 1.dp else 5.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text("صفحة $currentPage من $pageCount", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        Text(name, color = TextMuted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (!compactLandscape) Text(name, color = TextMuted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     IconButton(enabled = currentPage > 1, onClick = { scope.launch { listState.animateScrollToItem(currentPage - 2) } }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "الصفحة السابقة")
@@ -443,17 +465,31 @@ private fun ReaderScreen(
                     IconButton(enabled = currentPage < pageCount, onClick = { scope.launch { listState.animateScrollToItem(currentPage) } }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "الصفحة التالية")
                     }
-                    IconButton(onClick = onClose) { Icon(Icons.Default.MoreVert, contentDescription = "إغلاق المستند") }
+                    Box {
+                        IconButton(onClick = { settingsExpanded = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "إعدادات القراءة")
+                        }
+                        DropdownMenu(expanded = settingsExpanded, onDismissRequest = { settingsExpanded = false }) {
+                            DropdownMenuItem(text = { Text("الوضع الفاتح") }, onClick = { readingMode = ReadingMode.LIGHT; settingsExpanded = false })
+                            DropdownMenuItem(text = { Text("الوضع Sepia") }, onClick = { readingMode = ReadingMode.SEPIA; settingsExpanded = false })
+                            DropdownMenuItem(text = { Text("الوضع الليلي") }, onClick = { readingMode = ReadingMode.NIGHT; settingsExpanded = false })
+                        }
+                    }
                 }
             }
             LazyColumn(
                 state = listState,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                contentPadding = PaddingValues(horizontal = if (compactLandscape) 6.dp else 10.dp, vertical = if (compactLandscape) 4.dp else 10.dp),
+                verticalArrangement = Arrangement.spacedBy(if (compactLandscape) 6.dp else 12.dp)
             ) {
                 items(pageCount, key = { index -> session.hashCode().toString() + "-" + index }) { index ->
-                    PdfPageItem(session, index, targetWidth)
+                    BoxWithConstraints(Modifier.fillMaxWidth()) {
+                        val pageMaxWidth = if (maxWidth >= 700.dp) 980.dp else maxWidth
+                        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+                            PdfPageItem(session, index, targetWidth, readingMode, Modifier.widthIn(max = pageMaxWidth))
+                        }
+                    }
                 }
             }
         } else {
@@ -478,11 +514,18 @@ private fun ReaderScreen(
                 }
             }
         }
+        }
     }
 }
 
 @Composable
-private fun PdfPageItem(session: PdfSession, pageIndex: Int, targetWidth: Int) {
+private fun PdfPageItem(
+    session: PdfSession,
+    pageIndex: Int,
+    targetWidth: Int,
+    readingMode: ReadingMode,
+    modifier: Modifier = Modifier
+) {
     var zoom by remember(session, pageIndex) { mutableFloatStateOf(1f) }
     val result by produceState(
         initialValue = PageRenderState(),
@@ -495,8 +538,27 @@ private fun PdfPageItem(session: PdfSession, pageIndex: Int, targetWidth: Int) {
         }
     }
 
+    val pageColorFilter = when (readingMode) {
+        ReadingMode.LIGHT -> null
+        ReadingMode.SEPIA -> androidx.compose.ui.graphics.ColorFilter.colorMatrix(
+            androidx.compose.ui.graphics.ColorMatrix(floatArrayOf(
+                0.393f, 0.769f, 0.189f, 0f, 0f,
+                0.349f, 0.686f, 0.168f, 0f, 0f,
+                0.272f, 0.534f, 0.131f, 0f, 0f,
+                0f, 0f, 0f, 1f, 0f
+            ))
+        )
+        ReadingMode.NIGHT -> androidx.compose.ui.graphics.ColorFilter.colorMatrix(
+            androidx.compose.ui.graphics.ColorMatrix(floatArrayOf(
+                -1f, 0f, 0f, 0f, 255f,
+                0f, -1f, 0f, 0f, 255f,
+                0f, 0f, -1f, 0f, 255f,
+                0f, 0f, 0f, 1f, 0f
+            ))
+        )
+    }
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
@@ -506,10 +568,20 @@ private fun PdfPageItem(session: PdfSession, pageIndex: Int, targetWidth: Int) {
                 bitmap = result.bitmap!!.asImageBitmap(),
                 contentDescription = "صفحة " + (pageIndex + 1),
                 contentScale = ContentScale.FillWidth,
+                colorFilter = pageColorFilter,
                 modifier = Modifier.fillMaxWidth()
                     .graphicsLayer(scaleX = zoom, scaleY = zoom)
                     .pointerInput(session, pageIndex) {
-                        detectTransformGestures { _, _, scaleChange, _ -> zoom = (zoom * scaleChange).coerceIn(1f, 4f) }
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            do {
+                                val event = awaitPointerEvent()
+                                if (event.changes.count { it.pressed } >= 2) {
+                                    zoom = (zoom * event.calculateZoom()).coerceIn(1f, 4f)
+                                    event.changes.forEach { it.consume() }
+                                }
+                            } while (event.changes.any { it.pressed })
+                        }
                     }
             )
             result.error != null -> Box(Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.Center) {
