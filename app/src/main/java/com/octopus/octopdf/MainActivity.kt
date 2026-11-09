@@ -3,21 +3,15 @@ package com.octopus.octopdf
 import android.content.Context
 import android.content.Intent
 import android.database.Cursor
-import android.graphics.Bitmap
-import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.util.Base64
-import android.util.LruCache
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -38,12 +32,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -56,7 +46,9 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import androidx.compose.ui.viewinterop.AndroidView
+import com.ahmer.pdfviewer.PDFView
+import com.ahmer.pdfviewer.util.FitPolicy
 
 private val Context.octoDataStore by preferencesDataStore(name = "octopdf_settings")
 private val RECENT_KEY = stringPreferencesKey("recent_documents")
@@ -81,65 +73,14 @@ private sealed interface PdfOpenState {
     data class Failed(val message: String) : PdfOpenState
 }
 
-private data class PageRenderState(val bitmap: Bitmap? = null, val error: String? = null)
-
-private class PdfSession private constructor(
-    private val descriptor: android.os.ParcelFileDescriptor,
-    private val renderer: PdfRenderer,
-    val pageCount: Int,
-    private val cachePrefix: String
-) {
-    private val lock = Any()
-    private var closed = false
-
-    fun renderPage(index: Int, targetWidth: Int): Bitmap {
-        require(index in 0 until pageCount) { "رقم الصفحة غير صحيح" }
-        val width = targetWidth.coerceIn(480, 1600)
-        val key = "$cachePrefix:$index:$width"
-        pageBitmapCache.get(key)?.let { return it }
-
-        return synchronized(lock) {
-            check(!closed) { "تم إغلاق المستند" }
-            pageBitmapCache.get(key)?.let { return@synchronized it }
-            renderer.openPage(index).use { page ->
-                val height = (page.height.toFloat() * width / page.width).toInt().coerceAtLeast(1)
-                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                bitmap.eraseColor(android.graphics.Color.WHITE)
-                page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                pageBitmapCache.put(key, bitmap)
-                bitmap
-            }
-        }
-    }
-
-    fun close() {
-        synchronized(lock) {
-            if (!closed) {
-                closed = true
-                runCatching { renderer.close() }
-                runCatching { descriptor.close() }
-            }
-        }
-    }
-
-    companion object {
-        private val pageBitmapCache = object : LruCache<String, Bitmap>(24 * 1024 * 1024) {
-            override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
-        }
-
-        fun open(context: Context, uri: Uri): PdfSession {
-            val descriptor = context.contentResolver.openFileDescriptor(uri, "r")
-                ?: throw IllegalStateException("لم يتمكن أندرويد من فتح الملف. جرّب اختيار الملف مرة أخرى.")
-            try {
-                val renderer = PdfRenderer(descriptor)
-                return PdfSession(descriptor, renderer, renderer.pageCount, uri.toString())
-            } catch (error: Exception) {
-                descriptor.close()
-                throw error
-            }
-        }
-    }
+private sealed interface PdfOpenState {
+    data object Idle : PdfOpenState
+    data object Loading : PdfOpenState
+    data object Ready : PdfOpenState
+    data class Failed(val message: String) : PdfOpenState
 }
+
+private enum class ReadingMode { LIGHT, NIGHT, SEPIA }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -229,24 +170,10 @@ private fun OctoPdfApp(incomingUri: Uri?) {
     }
 
     LaunchedEffect(selectedUri, openAttempt) {
-        val uri = selectedUri
-        if (uri == null) {
+        if (selectedUri == null) {
             openState = PdfOpenState.Idle
-            return@LaunchedEffect
-        }
-        openState = PdfOpenState.Loading
-        try {
-            val session = withContext(Dispatchers.IO) { PdfSession.open(context, uri) }
-            if (documentName.isBlank()) documentName = withContext(Dispatchers.IO) { queryDisplayName(context, uri) }
-            openState = if (session.pageCount > 0) PdfOpenState.Ready(session) else {
-                session.close()
-                PdfOpenState.Failed("هذا الملف لا يحتوي على صفحات قابلة للعرض.")
-            }
-            listState.scrollToItem(0)
-        } catch (error: Exception) {
-            openState = PdfOpenState.Failed(
-                error.message?.takeIf { it.isNotBlank() } ?: "تعذر فتح ملف PDF. تأكد أن الملف سليم وأن لديك صلاحية الوصول إليه."
-            )
+        } else {
+            openState = PdfOpenState.Loading
         }
     }
 
@@ -260,11 +187,6 @@ private fun OctoPdfApp(incomingUri: Uri?) {
             controller?.show(WindowInsetsCompat.Type.systemBars())
         }
         onDispose { controller?.show(WindowInsetsCompat.Type.systemBars()) }
-    }
-
-    DisposableEffect(openState) {
-        val active = (openState as? PdfOpenState.Ready)?.session
-        onDispose { active?.close() }
     }
 
     MaterialTheme(
@@ -315,11 +237,13 @@ private fun OctoPdfApp(incomingUri: Uri?) {
             } else {
                 ReaderScreen(
                     name = documentName,
+                    uri = selectedUri!!,
                     state = openState,
-                    listState = listState,
                     modifier = Modifier.fillMaxSize().padding(padding),
                     onRetry = { openAttempt++ },
-                    onClose = { selectedUri = null }
+                    onClose = { selectedUri = null },
+                    onLoaded = { openState = PdfOpenState.Ready },
+                    onFailed = { openState = PdfOpenState.Failed(it) }
                 )
             }
         }
@@ -432,170 +356,122 @@ private fun HomeScreen(
 @Composable
 private fun ReaderScreen(
     name: String,
+    uri: Uri,
     state: PdfOpenState,
-    listState: androidx.compose.foundation.lazy.LazyListState,
     modifier: Modifier = Modifier,
     onRetry: () -> Unit,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    onLoaded: () -> Unit,
+    onFailed: (String) -> Unit
 ) {
-    val session = (state as? PdfOpenState.Ready)?.session
-    val pageCount = session?.pageCount ?: 0
-    val currentPage by remember { derivedStateOf { (listState.firstVisibleItemIndex + 1).coerceIn(1, pageCount.coerceAtLeast(1)) } }
-    val scope = rememberCoroutineScope()
-    val configuration = LocalConfiguration.current
-    val density = androidx.compose.ui.platform.LocalDensity.current
-    val targetWidth = with(density) { (configuration.screenWidthDp.dp - 36.dp).roundToPx().coerceIn(480, 1600) }
-    var readingMode by remember(session) { mutableStateOf(ReadingMode.LIGHT) }
-    var settingsExpanded by remember { mutableStateOf(false) }
+    var pageNumber by remember(uri) { mutableIntStateOf(1) }
+    var totalPages by remember(uri) { mutableIntStateOf(0) }
+    var readingMode by remember(uri) { mutableStateOf(ReadingMode.LIGHT) }
+    var controlsVisible by remember(uri) { mutableStateOf(true) }
+    var menuExpanded by remember { mutableStateOf(false) }
 
-    BoxWithConstraints(modifier.background(Ink)) {
-        val compactLandscape = maxWidth > maxHeight
-        Column(Modifier.fillMaxSize()) {
-        if (session != null) {
+    Column(modifier.background(Ink)) {
+        if (controlsVisible) {
             Surface(color = Panel, tonalElevation = 1.dp) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = if (compactLandscape) 1.dp else 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("صفحة $currentPage من $pageCount", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        if (!compactLandscape) Text(name, color = TextMuted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onClose) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع للملفات")
                     }
-                    IconButton(enabled = currentPage > 1, onClick = { scope.launch { listState.animateScrollToItem(currentPage - 2) } }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "الصفحة السابقة")
-                    }
-                    IconButton(enabled = currentPage < pageCount, onClick = { scope.launch { listState.animateScrollToItem(currentPage) } }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "الصفحة التالية")
+                    Column(Modifier.weight(1f)) {
+                        Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            if (totalPages > 0) "صفحة $pageNumber من $totalPages" else "جارٍ تحميل المستند",
+                            color = TextMuted, fontSize = 11.sp
+                        )
                     }
                     Box {
-                        IconButton(onClick = { settingsExpanded = true }) {
+                        IconButton(onClick = { menuExpanded = true }) {
                             Icon(Icons.Default.MoreVert, contentDescription = "إعدادات القراءة")
                         }
-                        DropdownMenu(expanded = settingsExpanded, onDismissRequest = { settingsExpanded = false }) {
-                            DropdownMenuItem(text = { Text("الوضع الفاتح") }, onClick = { readingMode = ReadingMode.LIGHT; settingsExpanded = false })
-                            DropdownMenuItem(text = { Text("الوضع Sepia") }, onClick = { readingMode = ReadingMode.SEPIA; settingsExpanded = false })
-                            DropdownMenuItem(text = { Text("الوضع الليلي") }, onClick = { readingMode = ReadingMode.NIGHT; settingsExpanded = false })
+                        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                            DropdownMenuItem(text = { Text("الوضع الفاتح") }, onClick = { readingMode = ReadingMode.LIGHT; menuExpanded = false })
+                            DropdownMenuItem(text = { Text("الوضع الليلي") }, onClick = { readingMode = ReadingMode.NIGHT; menuExpanded = false })
+                            DropdownMenuItem(text = { Text("الوضع Sepia") }, onClick = { readingMode = ReadingMode.SEPIA; menuExpanded = false })
                         }
                     }
                 }
             }
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = if (compactLandscape) 6.dp else 10.dp, vertical = if (compactLandscape) 4.dp else 10.dp),
-                verticalArrangement = Arrangement.spacedBy(if (compactLandscape) 6.dp else 12.dp)
-            ) {
-                items(pageCount, key = { index -> session.hashCode().toString() + "-" + index }) { index ->
-                    BoxWithConstraints(Modifier.fillMaxWidth()) {
-                        val pageMaxWidth = if (maxWidth >= 700.dp) 980.dp else maxWidth
-                        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
-                            PdfPageItem(session, index, targetWidth, readingMode, Modifier.widthIn(max = pageMaxWidth))
-                        }
-                    }
-                }
-            }
-        } else {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                when (state) {
-                    PdfOpenState.Idle, PdfOpenState.Loading -> Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                        CircularProgressIndicator(color = Accent)
-                        Text("جارٍ فتح المستند وتجهيز الصفحات…", color = TextMuted)
-                    }
-                    is PdfOpenState.Failed -> Column(
-                        Modifier.fillMaxWidth().padding(28.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        Icon(Icons.Default.PictureAsPdf, null, tint = Accent, modifier = Modifier.size(48.dp))
-                        Text("تعذر فتح المستند", fontWeight = FontWeight.Bold, fontSize = 19.sp)
-                        Text(state.message, color = TextMuted)
-                        Button(onClick = onRetry) { Text("إعادة المحاولة") }
-                        TextButton(onClick = onClose) { Text("العودة إلى الملفات") }
-                    }
-                    is PdfOpenState.Ready -> Unit
-                }
-            }
         }
-        }
-    }
-}
 
-@Composable
-private fun PdfPageItem(
-    session: PdfSession,
-    pageIndex: Int,
-    targetWidth: Int,
-    readingMode: ReadingMode,
-    modifier: Modifier = Modifier
-) {
-    var zoom by remember(session, pageIndex) { mutableFloatStateOf(1f) }
-    val result by produceState(
-        initialValue = PageRenderState(),
-        key1 = session, key2 = pageIndex, key3 = targetWidth
-    ) {
-        value = try {
-            PageRenderState(bitmap = withContext(Dispatchers.IO) { session.renderPage(pageIndex, targetWidth) })
-        } catch (error: Exception) {
-            PageRenderState(error = error.message ?: "تعذر رسم الصفحة")
-        }
-    }
-
-    val pageColorFilter = when (readingMode) {
-        ReadingMode.LIGHT -> null
-        ReadingMode.SEPIA -> androidx.compose.ui.graphics.ColorFilter.colorMatrix(
-            androidx.compose.ui.graphics.ColorMatrix(floatArrayOf(
-                0.393f, 0.769f, 0.189f, 0f, 0f,
-                0.349f, 0.686f, 0.168f, 0f, 0f,
-                0.272f, 0.534f, 0.131f, 0f, 0f,
-                0f, 0f, 0f, 1f, 0f
-            ))
-        )
-        ReadingMode.NIGHT -> androidx.compose.ui.graphics.ColorFilter.colorMatrix(
-            androidx.compose.ui.graphics.ColorMatrix(floatArrayOf(
-                -1f, 0f, 0f, 0f, 255f,
-                0f, -1f, 0f, 0f, 255f,
-                0f, 0f, -1f, 0f, 255f,
-                0f, 0f, 0f, 1f, 0f
-            ))
-        )
-    }
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
-    ) {
-        when {
-            result.bitmap != null -> Image(
-                bitmap = result.bitmap!!.asImageBitmap(),
-                contentDescription = "صفحة " + (pageIndex + 1),
-                contentScale = ContentScale.FillWidth,
-                colorFilter = pageColorFilter,
-                modifier = Modifier.fillMaxWidth()
-                    .graphicsLayer(scaleX = zoom, scaleY = zoom)
-                    .pointerInput(session, pageIndex) {
-                        awaitEachGesture {
-                            awaitFirstDown(requireUnconsumed = false)
-                            do {
-                                val event = awaitPointerEvent()
-                                val activePointers = event.changes.filter { it.pressed }
-                                if (activePointers.size >= 2) {
-                                    val first = activePointers[0]
-                                    val second = activePointers[1]
-                                    val previousDistance = (first.previousPosition - second.previousPosition).getDistance()
-                                    val currentDistance = (first.position - second.position).getDistance()
-                                    if (previousDistance > 0f && currentDistance > 0f) {
-                                        zoom = (zoom * (currentDistance / previousDistance)).coerceIn(1f, 4f)
-                                    }
-                                    activePointers.forEach { it.consume() }
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            key(uri, readingMode) {
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { viewContext ->
+                        PDFView(viewContext, null).apply {
+                            setBackgroundColor(
+                                when (readingMode) {
+                                    ReadingMode.LIGHT -> android.graphics.Color.rgb(32, 43, 55)
+                                    ReadingMode.NIGHT -> android.graphics.Color.rgb(12, 18, 26)
+                                    ReadingMode.SEPIA -> android.graphics.Color.rgb(85, 71, 53)
                                 }
-                            } while (event.changes.any { it.pressed })
+                            )
+                            fromUri(uri)
+                                .enableSwipe(true)
+                                .swipeHorizontal(false)
+                                .enableDoubleTap(true)
+                                .enableAntialiasing(true)
+                                .autoSpacing(true)
+                                .pageSnap(false)
+                                .pageFling(false)
+                                .fitEachPage(true)
+                                .pageFitPolicy(FitPolicy.WIDTH)
+                                .nightMode(readingMode == ReadingMode.NIGHT)
+                                .onLoad { pages ->
+                                    totalPages = pages
+                                    onLoaded()
+                                }
+                                .onPageChange { page, pages ->
+                                    pageNumber = page + 1
+                                    totalPages = pages
+                                }
+                                .onError { error ->
+                                    onFailed(error?.message ?: "تعذر قراءة ملف PDF")
+                                }
+                                .onTap {
+                                    controlsVisible = !controlsVisible
+                                    true
+                                }
+                                .load()
                         }
-                    }
-            )
-            result.error != null -> Box(Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.Center) {
-                Text("تعذر تحميل الصفحة " + (pageIndex + 1) + ": " + result.error, color = Color.DarkGray)
+                    },
+                    update = { }
+                )
             }
-            else -> Box(Modifier.fillMaxWidth().height(240.dp), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = Accent)
+
+            if (state is PdfOpenState.Loading) {
+                Surface(
+                    modifier = Modifier.align(Alignment.Center),
+                    color = Panel,
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        CircularProgressIndicator(modifier = Modifier.size(22.dp), color = Accent, strokeWidth = 2.dp)
+                        Text("جارٍ فتح ملف PDF…")
+                    }
+                }
+            }
+            if (state is PdfOpenState.Failed) {
+                Column(
+                    Modifier.align(Alignment.Center).padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text("تعذر فتح المستند", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Text(state.message, color = TextMuted)
+                    Button(onClick = onRetry) { Text("إعادة المحاولة") }
+                    TextButton(onClick = onClose) { Text("العودة إلى الملفات") }
+                }
             }
         }
     }
 }
+
