@@ -69,18 +69,9 @@ private data class RecentDocument(val uri: Uri, val name: String)
 private sealed interface PdfOpenState {
     data object Idle : PdfOpenState
     data object Loading : PdfOpenState
-    data class Ready(val session: PdfSession) : PdfOpenState
-    data class Failed(val message: String) : PdfOpenState
-}
-
-private sealed interface PdfOpenState {
-    data object Idle : PdfOpenState
-    data object Loading : PdfOpenState
     data object Ready : PdfOpenState
     data class Failed(val message: String) : PdfOpenState
 }
-
-private enum class ReadingMode { LIGHT, NIGHT, SEPIA }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -427,21 +418,29 @@ private fun ReaderScreen(
                                 .fitEachPage(true)
                                 .pageFitPolicy(FitPolicy.WIDTH)
                                 .nightMode(readingMode == ReadingMode.NIGHT)
-                                .onLoad { pages ->
-                                    totalPages = pages
-                                    onLoaded()
-                                }
-                                .onPageChange { page, pages ->
-                                    pageNumber = page + 1
-                                    totalPages = pages
-                                }
-                                .onError { error ->
-                                    onFailed(error?.message ?: "تعذر قراءة ملف PDF")
-                                }
-                                .onTap {
-                                    controlsVisible = !controlsVisible
-                                    true
-                                }
+                                .onLoad(object : com.ahmer.pdfviewer.listener.OnLoadCompleteListener {
+                                    override fun loadComplete(pages: Int) {
+                                        totalPages = pages
+                                        onLoaded()
+                                    }
+                                })
+                                .onPageChange(object : com.ahmer.pdfviewer.listener.OnPageChangeListener {
+                                    override fun onPageChanged(page: Int, pages: Int) {
+                                        pageNumber = page + 1
+                                        totalPages = pages
+                                    }
+                                })
+                                .onError(object : com.ahmer.pdfviewer.listener.OnErrorListener {
+                                    override fun onError(error: Throwable?) {
+                                        onFailed(error?.message ?: "تعذر قراءة ملف PDF")
+                                    }
+                                })
+                                .onTap(object : com.ahmer.pdfviewer.listener.OnTapListener {
+                                    override fun onTap(event: android.view.MotionEvent?): Boolean {
+                                        controlsVisible = !controlsVisible
+                                        return true
+                                    }
+                                })
                                 .load()
                         }
                     },
