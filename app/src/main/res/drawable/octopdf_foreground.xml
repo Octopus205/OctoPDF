@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <!-- White PDF sheet with a folded cyan corner -->
+    <path android:fillColor="#FFFFFF" android:pathData="M25,12 H66 L88,34 V91 H25 Z"/>
+    <path android:fillColor="#55D9FF" android:pathData="M66,12 V34 H88 Z"/>
+    <path android:fillColor="#0B55E8" android:pathData="M66,12 L88,34 H73 Q66,34 66,27 Z"/>
+    <!-- PDF label -->
+    <path android:fillColor="#0757E8" android:pathData="M19,21 Q19,16 25,16 H66 Q72,16 72,22 V39 Q72,45 66,45 H25 Q19,45 19,39 Z"/>
+    <path android:fillColor="#FFFFFF" android:pathData="M28,25 H35 Q41,25 41,31 Q41,37 35,37 H32 V41 H28 Z M32,28 V34 H35 Q37,34 37,31 Q37,28 35,28 Z"/>
+    <path android:fillColor="#FFFFFF" android:pathData="M44,25 H50 Q58,25 58,33 Q58,41 50,41 H44 Z M48,28 V38 H50 Q54,38 54,33 Q54,28 50,28 Z"/>
+    <path android:fillColor="#FFFFFF" android:pathData="M61,25 H69 V28 H65 V31 H69 V34 H65 V41 H61 Z"/>
+    <!-- Faceless octopus head -->
+    <path android:fillColor="#0878F9" android:pathData="M38,61 C38,49 46,43 54,43 C63,43 70,50 70,61 C70,67 67,71 64,75 C62,78 62,81 62,84 H46 C46,80 45,77 42,73 C39,69 38,66 38,61 Z"/>
+    <!-- Seven flowing tentacles -->
+    <path android:fillColor="#00C9F2" android:pathData="M43,70 C36,69 34,63 29,62 C23,61 21,67 25,71 C27,73 30,73 31,71 C28,78 18,76 17,68 C16,58 27,54 34,59 C39,62 40,67 45,67 Z"/>
+    <path android:fillColor="#0878F9" android:pathData="M65,70 C72,69 74,63 79,62 C85,61 87,67 83,71 C81,73 78,73 77,71 C80,78 90,76 91,68 C92,58 81,54 74,59 C69,62 68,67 63,67 Z"/>
+    <path android:fillColor="#00B8F0" android:pathData="M43,74 C37,78 32,77 28,76 C21,74 19,80 23,84 C26,87 30,85 30,83 C29,91 17,90 16,82 C14,73 24,69 33,71 C38,72 40,74 45,71 Z"/>
+    <path android:fillColor="#0878F9" android:pathData="M65,74 C71,78 76,77 80,76 C87,74 89,80 85,84 C82,87 78,85 78,83 C79,91 91,90 92,82 C94,73 84,69 75,71 C70,72 68,74 63,71 Z"/>
+    <path android:fillColor="#00C9F2" android:pathData="M47,78 C42,84 37,85 34,84 C28,83 27,89 31,92 C34,94 38,91 37,89 C39,97 49,95 52,87 L53,79 Z"/>
+    <path android:fillColor="#0878F9" android:pathData="M61,78 C66,84 71,85 74,84 C80,83 81,89 77,92 C74,94 70,91 71,89 C69,97 59,95 56,87 L55,79 Z"/>
+    <path android:fillColor="#00B8F0" android:pathData="M54,79 C50,85 49,90 52,94 C54,97 58,95 57,92 C61,99 68,94 66,88 C64,83 60,80 59,77 Z"/>
+</vector>
