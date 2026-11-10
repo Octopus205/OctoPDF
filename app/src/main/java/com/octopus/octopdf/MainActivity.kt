@@ -12,6 +12,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -416,14 +417,20 @@ private fun RailDestination(label: String, icon: androidx.compose.ui.graphics.ve
 
 @Composable
 private fun BottomDestination(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, selected: Boolean, onClick: () -> Unit) {
-    androidx.compose.material3.NavigationBarItem(
-        selected = selected, onClick = onClick, icon = { Icon(icon, contentDescription = label) },
-        label = { Text(label, fontSize = 10.sp) }, alwaysShowLabel = true,
-        colors = NavigationBarItemDefaults.colors(
-            selectedIconColor = Cyan, selectedTextColor = Cyan,
-            indicatorColor = Color(0xFF173A4A), unselectedIconColor = TextMuted
-        )
-    )
+    Column(
+        modifier = Modifier.weight(1f).clickable(onClick = onClick).padding(vertical = 7.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        Box(
+            modifier = Modifier.clip(RoundedCornerShape(18.dp))
+                .background(if (selected) Color(0xFF173A4A) else Color.Transparent)
+                .padding(horizontal = 18.dp, vertical = 4.dp)
+        ) {
+            Icon(icon, contentDescription = label, tint = if (selected) Cyan else TextMuted, modifier = Modifier.size(21.dp))
+        }
+        Text(label, fontSize = 10.sp, color = if (selected) Cyan else TextMuted, maxLines = 1)
+    }
 }
 
 @Composable
