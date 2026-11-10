@@ -418,7 +418,7 @@ private fun RailDestination(label: String, icon: androidx.compose.ui.graphics.ve
 @Composable
 private fun BottomDestination(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, selected: Boolean, onClick: () -> Unit) {
     Column(
-        modifier = Modifier.weight(1f).clickable(onClick = onClick).padding(vertical = 7.dp),
+        modifier = Modifier.width(72.dp).clickable(onClick = onClick).padding(vertical = 7.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
