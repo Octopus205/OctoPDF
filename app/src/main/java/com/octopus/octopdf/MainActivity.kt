@@ -295,7 +295,7 @@ private fun OctoPdfApp(incomingUri: Uri?) {
                                             horizontalArrangement = Arrangement.spacedBy(7.dp)
                                         ) {
                                             Icon(Icons.Default.PictureAsPdf, null, tint = if (active) Cyan else TextMuted, modifier = Modifier.size(15.dp))
-                                            Text(tab.name, maxWidth = 145.dp, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 11.sp)
+                                            Text(tab.name, modifier = Modifier.widthIn(max = 145.dp), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 11.sp)
                                             IconButton(
                                                 onClick = {
                                                     openTabs.remove(tab)
@@ -416,7 +416,7 @@ private fun RailDestination(label: String, icon: androidx.compose.ui.graphics.ve
 
 @Composable
 private fun BottomDestination(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, selected: Boolean, onClick: () -> Unit) {
-    NavigationBarItem(
+    androidx.compose.material3.NavigationBarItem(
         selected = selected, onClick = onClick, icon = { Icon(icon, contentDescription = label) },
         label = { Text(label, fontSize = 10.sp) }, alwaysShowLabel = true,
         colors = NavigationBarItemDefaults.colors(
