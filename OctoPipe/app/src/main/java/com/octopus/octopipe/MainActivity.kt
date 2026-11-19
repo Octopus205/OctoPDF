@@ -164,9 +164,10 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
         Tab.SETTINGS->SettingsPage(provider,{provider=it})
         Tab.PLAYER->PlayerPage(player,current,segments,error,{captionMenu=it},captionMenu,{current?.let{DownloadHelper.enqueue(context,it)}},{current?.let{DownloadHelper.enqueueAudio(context,it)}},onPip,qualityMenu,{qualityMenu=it},{label->
          val info=current?:return@PlayerPage
-         val variant=info.variants.firstOrNull{it.label==label}?:return@PlayerPage
+         val variant=info.variants.firstOrNull{it.label==label}
+         val target=variant?.url?:info.streamUrl
          val pos=player?.currentPosition?:0L;val wasPlaying=player?.isPlaying==true
-         selectedQuality=label;player?.setMediaItem(MediaItem.fromUri(variant.url),pos);player?.prepare();if(wasPlaying)player?.play()
+         selectedQuality=label;player?.setMediaItem(MediaItem.fromUri(target),pos);player?.prepare();if(wasPlaying)player?.play()
         },selectedQuality,playerFullscreen,{playerFullscreen=it},{resizeMode=when(resizeMode){AspectRatioFrameLayout.RESIZE_MODE_FIT->AspectRatioFrameLayout.RESIZE_MODE_ZOOM;AspectRatioFrameLayout.RESIZE_MODE_ZOOM->AspectRatioFrameLayout.RESIZE_MODE_FILL;else->AspectRatioFrameLayout.RESIZE_MODE_FIT}},resizeMode){v->
          val added=store.toggle(v);favorites.removeAll{it.id==v.id&&it.service==v.service};if(added)favorites.add(0,v)
         }
@@ -359,7 +360,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
  query:String,onQuery:(String)->Unit,provider:ServiceProvider,onProvider:(ServiceProvider)->Unit,
  mode:String,onMode:(String)->Unit,onSearch:()->Unit,channels:List<ChannelItem>,playlists:List<PlaylistItem>,
  videos:List<VideoItem>,activePlaylist:PlaylistItem?,loading:Boolean,error:String?,
- onSubscribe:(ChannelItem)->Unit,onPlaylist:(PlaylistItem)->Unit,onDownloadPlaylist:()->Unit,onPlay:(VideoItem)->Unit
+ onSubscribe:(ChannelItem)->Unit,onPlaylist:(PlaylistItem)->Unit,onDownloadPlaylist:()->Unit,onPlay:(VideoItem)->Unit,onChannel:(ChannelItem)->Unit
 ){
  LazyColumn(Modifier.fillMaxSize().padding(horizontal=18.dp),verticalArrangement=Arrangement.spacedBy(12.dp),contentPadding=PaddingValues(top=8.dp,bottom=24.dp)){
   item{Text("Discover",fontSize=28.sp,fontWeight=FontWeight.Bold,color=White);Text("Find creators and collections",color=Muted,fontSize=13.sp)}
@@ -378,7 +379,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
    if(loading)item{Row(verticalAlignment=Alignment.CenterVertically){CircularProgressIndicator(modifier=Modifier.size(18.dp),color=Blue);Spacer(Modifier.width(8.dp));Text("Searching…",color=Muted)}}
    if(error!=null)item{ErrorLabel(error)}
    if(mode=="Channels")items(channels,key={"channel-"+it.service+it.id}){ch->
-    Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(14.dp)).padding(12.dp),verticalAlignment=Alignment.CenterVertically){
+    Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(14.dp)).clickable{onChannel(ch)}.padding(12.dp),verticalAlignment=Alignment.CenterVertically){
      AsyncImage(model=ch.thumbnail.ifBlank{null},contentDescription=null,modifier=Modifier.size(48.dp).background(Raised,RoundedCornerShape(24.dp)))
      Spacer(Modifier.width(10.dp));Column(Modifier.weight(1f)){Text(ch.name,color=White,fontWeight=FontWeight.SemiBold,maxLines=1);Text(ch.service,color=Muted,fontSize=11.sp)}
      OutlinedButton(onClick={onSubscribe(ch)}){Icon(Icons.Outlined.Add,null);Text("Subscribe")}
@@ -399,7 +400,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
   item{Text("Subscriptions",fontSize=28.sp,fontWeight=FontWeight.Bold,color=White);Text("Your followed creators, saved on this device",color=Muted,fontSize=13.sp)}
   if(channels.isEmpty())item{EmptyCard("No subscriptions yet. Open Discover, search for a channel, and tap Subscribe.")}
   items(channels,key={"sub-"+it.service+it.id}){ch->
-   Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(14.dp)).padding(12.dp),verticalAlignment=Alignment.CenterVertically){
+   Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(14.dp)).clickable{onChannel(ch)}.padding(12.dp),verticalAlignment=Alignment.CenterVertically){
     AsyncImage(model=ch.thumbnail.ifBlank{null},contentDescription=null,modifier=Modifier.size(48.dp).background(Raised,RoundedCornerShape(24.dp)))
     Spacer(Modifier.width(10.dp));Column(Modifier.weight(1f)){Text(ch.name,color=White,fontWeight=FontWeight.SemiBold);Text(ch.service,color=Muted,fontSize=11.sp)}
     TextButton(onClick={onUnsubscribe(ch)}){Text("Following",color=Blue)}
