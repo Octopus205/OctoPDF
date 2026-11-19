@@ -49,13 +49,15 @@ object NewPipeExtractorEngine {
         extractor.fetchPage()
 
         val videoStream = extractor.videoStreams.firstOrNull { !it.isVideoOnly }
-            ?: extractor.videoStreams.firstOrNull()
-            ?: throw IllegalStateException("NewPipe did not return a playable video stream.")
+            ?: throw IllegalStateException("This video only exposes a separate video track. A compatible combined stream was not returned.")
+        if (!videoStream.isUrl) {
+            throw IllegalStateException("This video exposes a manifest instead of a direct stream. Adaptive playback support is required.")
+        }
 
         val captions = extractor.subtitlesDefault.mapNotNull { subtitle ->
             val url = subtitle.content
             if (url.isBlank()) null else CaptionTrack(
-                label = subtitle.name,
+                label = subtitle.name ?: subtitle.languageTag,
                 languageCode = subtitle.languageTag.ifBlank { "und" },
                 url = url
             )
