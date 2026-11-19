@@ -10,8 +10,8 @@ android {
         applicationId = "com.octopus.octopdf"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
     }
     buildTypes { release { isMinifyEnabled = false } }
@@ -31,6 +31,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.10.0")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("io.github.ahmerafzal1:ahmer-pdfviewer:2.0.1")
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.foundation:foundation")
