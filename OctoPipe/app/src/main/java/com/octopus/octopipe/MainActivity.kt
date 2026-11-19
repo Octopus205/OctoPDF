@@ -98,7 +98,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
  LaunchedEffect(darkMode){applyPalette(darkMode)}
  val scope=rememberCoroutineScope()
  var tab by remember{mutableStateOf(Tab.HOME)}
- var provider by remember{mutableStateOf(ServiceProvider.YOUTUBE)}
+ var provider by remember{mutableStateOf(runCatching{ServiceProvider.valueOf(prefs.getString("provider",ServiceProvider.YOUTUBE.name)!!)}.getOrDefault(ServiceProvider.YOUTUBE))}
  var query by remember{mutableStateOf("")}
  var loading by remember{mutableStateOf(false)}
  var error by remember{mutableStateOf<String?>(null)}
@@ -120,6 +120,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
  var playerFullscreen by remember{mutableStateOf(false)}
  var selectedQuality by remember{mutableStateOf("Auto")}
  var resizeMode by remember{mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT)}
+ fun changeProvider(p:ServiceProvider){provider=p;prefs.edit().putString("provider",p.name).apply()}
  fun search(){if(query.isBlank())return;scope.launch{loading=true;error=null;try{results.clear();results.addAll(VideoRepository.search(provider,query));tab=Tab.EXPLORE}catch(e:Exception){error=e.message?:"Search failed."}finally{loading=false}}}
  fun searchDiscovery(){if(query.isBlank())return;scope.launch{loading=true;error=null;try{
   if(discoverMode=="Channels"){channelResults.clear();channelResults.addAll(DiscoveryRepository.searchChannels(provider,query))}
@@ -140,7 +141,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
  }catch(e:Exception){error=e.message?:"Unable to play this video."}finally{loading=false}}}
  LaunchedEffect(player,segments,current){val p=player?:return@LaunchedEffect;val skipped=mutableSetOf<Int>();while(true){if(p.isPlaying){val pos=p.currentPosition/1000.0;segments.forEachIndexed{i,s->if(pos>=s.startSeconds&&pos<s.endSeconds&&skipped.add(i))p.seekTo((s.endSeconds*1000).toLong())};if(pos<2)skipped.clear()};delay(450)}}
  MaterialTheme{
-  ModalNavigationDrawer(drawerState=drawerState,drawerContent={ModalDrawerSheet(drawerContainerColor=Panel){SettingsDrawer(provider,{provider=it},darkMode,{darkMode=it;prefs.edit().putBoolean("dark_mode",it).apply()},{scope.launch{drawerState.close()}},{folderPicker.launch(null)})}}){
+  ModalNavigationDrawer(drawerState=drawerState,drawerContent={ModalDrawerSheet(drawerContainerColor=Panel){SettingsDrawer(provider,::changeProvider,darkMode,{darkMode=it;prefs.edit().putBoolean("dark_mode",it).apply()},{scope.launch{drawerState.close()}},{folderPicker.launch(null)})}}){
   Surface(Modifier.fillMaxSize(),color=Bg,contentColor=White){
    BoxWithConstraints(Modifier.fillMaxSize()){
     val wide=maxWidth>=600.dp
@@ -152,9 +153,9 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
       if(!playerFullscreen)Header{scope.launch{drawerState.open()}}
       Box(Modifier.weight(1f).fillMaxWidth()){
        when(tab){
-        Tab.HOME->SearchPage(query,{query=it},provider,{provider=it},{search()},results,loading,error,::play,true,{tab=Tab.DISCOVER},::openVideoChannel)
+        Tab.HOME->SearchPage(query,{query=it},provider,::changeProvider,{search()},results,loading,error,::play,true,{tab=Tab.DISCOVER},::openVideoChannel)
         Tab.EXPLORE->SearchPage(query,{query=it},provider,{provider=it},{search()},results,loading,error,::play,false,{},::openVideoChannel)
-        Tab.DISCOVER->DiscoverPage(query,{query=it},provider,{provider=it},discoverMode,{discoverMode=it;channelResults.clear();playlistResults.clear()},{searchDiscovery()},channelResults,playlistResults,playlistVideos,activePlaylist,loading,error,{ch->
+        Tab.DISCOVER->DiscoverPage(query,{query=it},provider,::changeProvider,discoverMode,{discoverMode=it;channelResults.clear();playlistResults.clear()},{searchDiscovery()},channelResults,playlistResults,playlistVideos,activePlaylist,loading,error,{ch->
          val added=store.toggleSubscription(ch);subscriptions.removeAll{it.id==ch.id&&it.service==ch.service};if(added)subscriptions.add(0,ch)
         },::openPlaylist,::downloadPlaylist,::play,::openChannel)
         Tab.SUBSCRIPTIONS->SubscriptionsPage(subscriptions,{ch->
@@ -170,7 +171,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
          val variant=info.variants.firstOrNull{it.label==label}
          val target=variant?.url?:info.streamUrl
          val pos=player?.currentPosition?:0L;val wasPlaying=player?.isPlaying==true
-         selectedQuality=label;player?.setMediaItem(MediaItem.fromUri(target),pos);player?.prepare();if(wasPlaying)player?.play()
+         selectedQuality=label;player?.setMediaItem(MediaItem.Builder().setUri(target).setMediaMetadata(MediaMetadata.Builder().setTitle(info.video.title).setArtist(info.video.author).build()).setSubtitleConfigurations(info.captions.map{cap->MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(cap.url)).setMimeType(MimeTypes.TEXT_VTT).setLanguage(cap.languageCode).build()}).build(),pos);player?.prepare();if(wasPlaying)player?.play()
         },selectedQuality,playerFullscreen,{playerFullscreen=it},{resizeMode=when(resizeMode){AspectRatioFrameLayout.RESIZE_MODE_FIT->AspectRatioFrameLayout.RESIZE_MODE_ZOOM;AspectRatioFrameLayout.RESIZE_MODE_ZOOM->AspectRatioFrameLayout.RESIZE_MODE_FILL;else->AspectRatioFrameLayout.RESIZE_MODE_FIT}},resizeMode){v->
          val added=store.toggle(v);favorites.removeAll{it.id==v.id&&it.service==v.service};if(added)favorites.add(0,v)
         }
@@ -206,7 +207,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
   item{HorizontalDivider(color=Raised)}
   item{Text("DOWNLOADS",fontSize=10.sp,color=Blue,fontWeight=FontWeight.Bold,letterSpacing=1.5.sp)}
   item{NavigationDrawerItem(label={Text("Choose download folder")},selected=false,onClick=onFolder,icon={Icon(Icons.Outlined.FolderOpen,null)})}
-  item{Text("Download location is remembered on this device.",fontSize=11.sp,color=Muted)}
+  item{Text("Selected: "+if(androidx.compose.ui.platform.LocalContext.current.getSharedPreferences("octopipe_settings",android.content.Context.MODE_PRIVATE).getString("download_tree_uri",null)!=null)"Custom folder" else "App Downloads",fontSize=11.sp,color=Muted)}
   item{HorizontalDivider(color=Raised)}
   item{Text("PLAYBACK",fontSize=10.sp,color=Blue,fontWeight=FontWeight.Bold,letterSpacing=1.5.sp)}
   item{InfoCard("Video quality","Choose Auto or an available resolution from the player")}
