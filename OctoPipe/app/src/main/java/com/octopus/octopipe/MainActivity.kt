@@ -132,10 +132,11 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
  fun play(v:VideoItem){scope.launch{loading=true;error=null;tab=Tab.PLAYER;try{
   val info=VideoRepository.resolve(v);current=info;selectedQuality=info.variants.firstOrNull()?.label?:"Auto";store.addHistory(v)
   history.removeAll{it.id==v.id&&it.service==v.service};history.add(0,v)
-  segments=if(v.service==ServiceProvider.YOUTUBE.name)SponsorBlockRepository.segments(v.id)else emptyList()
+  segments=emptyList()
   val subtitles=info.captions.map{c->MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(c.url)).setMimeType(MimeTypes.TEXT_VTT).setLanguage(c.languageCode).build()}
   val item=MediaItem.Builder().setUri(info.streamUrl).setMediaMetadata(MediaMetadata.Builder().setTitle(v.title).setArtist(v.author).build()).setSubtitleConfigurations(subtitles).build()
   player?.setMediaItem(item);player?.prepare();player?.play()
+  if(v.service==ServiceProvider.YOUTUBE.name)scope.launch{segments=SponsorBlockRepository.segments(v.id)}
  }catch(e:Exception){error=e.message?:"Unable to play this video."}finally{loading=false}}}
  LaunchedEffect(player,segments,current){val p=player?:return@LaunchedEffect;val skipped=mutableSetOf<Int>();while(true){if(p.isPlaying){val pos=p.currentPosition/1000.0;segments.forEachIndexed{i,s->if(pos>=s.startSeconds&&pos<s.endSeconds&&skipped.add(i))p.seekTo((s.endSeconds*1000).toLong())};if(pos<2)skipped.clear()};delay(450)}}
  MaterialTheme{
