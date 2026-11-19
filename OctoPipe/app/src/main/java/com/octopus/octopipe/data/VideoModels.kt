@@ -30,6 +30,7 @@ data class PlaylistItem(
     val url:String
 )
 data class CaptionTrack(val label:String,val languageCode:String,val url:String)
+data class VideoVariant(val label:String,val url:String,val mimeType:String,val height:Int,val bitrate:Int=0)
 data class SponsorSegment(val startSeconds:Double,val endSeconds:Double,val category:String)
 data class StreamInfo(
     val video:VideoItem,
@@ -39,6 +40,7 @@ data class StreamInfo(
     val downloadUrl:String?=streamUrl,
     val downloadMimeType:String=mimeType,
     val audioDownloadUrl:String?=null,
-    val audioMimeType:String="audio/mp4"
+    val audioMimeType:String="audio/mp4",
+    val variants:List<VideoVariant> = emptyList()
 )
 enum class ServiceProvider(val title:String){YOUTUBE("YouTube"),PEERTUBE("PeerTube")}
