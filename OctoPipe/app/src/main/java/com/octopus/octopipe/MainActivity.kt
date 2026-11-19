@@ -154,7 +154,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
       Box(Modifier.weight(1f).fillMaxWidth()){
        when(tab){
         Tab.HOME->SearchPage(query,{query=it},provider,::changeProvider,{search()},results,loading,error,::play,true,{tab=Tab.DISCOVER},::openVideoChannel)
-        Tab.EXPLORE->SearchPage(query,{query=it},provider,{provider=it},{search()},results,loading,error,::play,false,{},::openVideoChannel)
+        Tab.EXPLORE->SearchPage(query,{query=it},provider,::changeProvider,{search()},results,loading,error,::play,false,{},::openVideoChannel)
         Tab.DISCOVER->DiscoverPage(query,{query=it},provider,::changeProvider,discoverMode,{discoverMode=it;channelResults.clear();playlistResults.clear()},{searchDiscovery()},channelResults,playlistResults,playlistVideos,activePlaylist,loading,error,{ch->
          val added=store.toggleSubscription(ch);subscriptions.removeAll{it.id==ch.id&&it.service==ch.service};if(added)subscriptions.add(0,ch)
         },::openPlaylist,::downloadPlaylist,::play,::openChannel)
