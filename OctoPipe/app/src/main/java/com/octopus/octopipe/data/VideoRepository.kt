@@ -72,7 +72,19 @@ private object YouTubeEngine:VideoEngine {
         val mime=direct?.second?:"application/x-mpegURL"
         val caps=mutableListOf<CaptionTrack>();val ca=o.optJSONArray("captions")
         if(ca!=null)for(i in 0 until ca.length()){val c=ca.optJSONObject(i)?:continue;val u=c.optString("url");if(u.startsWith("http"))caps.add(CaptionTrack(c.optString("label",c.optString("languageCode")),c.optString("languageCode","und"),u))}
-        StreamInfo(video,play,mime,caps,direct?.first,direct?.second?:"video/mp4")
+        val adaptive=o.optJSONArray("adaptiveFormats")
+        var audioUrl:String?=null
+        var audioMime="audio/mp4"
+        if(adaptive!=null)for(i in 0 until adaptive.length()){
+            val f=adaptive.optJSONObject(i)?:continue
+            val type=f.optString("type").substringBefore(';')
+            val u=f.optString("url")
+            if(type.startsWith("audio/")&&u.startsWith("http")){
+                if(audioUrl==null){audioUrl=u;audioMime=type}
+                if(f.optLong("bitrate")>=128000){audioUrl=u;audioMime=type;break}
+            }
+        }
+        StreamInfo(video,play,mime,caps,direct?.first,direct?.second?:"video/mp4",audioUrl,audioMime)
     }
 }
 private object PeerTubeEngine:VideoEngine {
