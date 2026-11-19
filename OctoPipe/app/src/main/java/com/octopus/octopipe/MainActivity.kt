@@ -20,6 +20,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
@@ -43,12 +44,14 @@ import com.octopus.octopipe.playback.OctoPlaybackService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private val Bg=Color(0xFF090B10)
-private val Panel=Color(0xFF141923)
-private val Raised=Color(0xFF1B2330)
-private val Blue=Color(0xFF55A7FF)
-private val White=Color(0xFFF3F6FA)
-private val Muted=Color(0xFF9AA7B8)
+private val Bg=Color(0xFF080B14)
+private val Panel=Color(0xFF111827)
+private val Raised=Color(0xFF19243A)
+private val Blue=Color(0xFF69D5FF)
+private val Violet=Color(0xFF8C7BFF)
+private val Mint=Color(0xFF72F0C1)
+private val White=Color(0xFFF5F7FF)
+private val Muted=Color(0xFF9BAAC2)
 
 class MainActivity:ComponentActivity(){
  private var future:ListenableFuture<MediaController>?=null
@@ -130,9 +133,11 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
         }
        }
       }
-      if(!wide)NavigationBar(containerColor=Bg){
-       Tab.entries.filter{it!=Tab.PLAYER && it!=Tab.SETTINGS}.forEach{t->NavigationBarItem(selected=tab==t,onClick={tab=t},icon={TabIcon(t)},label={Text(t.label)})}
-       if(current!=null)NavigationBarItem(selected=tab==Tab.PLAYER,onClick={tab=Tab.PLAYER},icon={Icon(Icons.Outlined.PlayArrow,null)},label={Text("Player")})
+      if(!wide)NavigationBar(containerColor=Color(0xFF0D1320),contentColor=White,tonalElevation=0.dp){
+       listOf(Tab.HOME,Tab.DISCOVER,Tab.SUBSCRIPTIONS,Tab.LIBRARY).forEach{t->
+        NavigationBarItem(selected=tab==t,onClick={tab=t},icon={TabIcon(t)},label={Text(t.label,fontSize=10.sp)},alwaysShowLabel=true,
+         colors=NavigationBarItemDefaults.colors(selectedIconColor=Blue,selectedTextColor=Blue,indicatorColor=Color(0xFF1A2940),unselectedIconColor=Muted,unselectedTextColor=Muted))
+       }
       }
      }
     }
@@ -141,41 +146,78 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
  }
 }
 @Composable private fun Header(onSettings:()->Unit){
- Row(Modifier.fillMaxWidth().padding(horizontal=20.dp,vertical=13.dp),verticalAlignment=Alignment.CenterVertically){
-  AppMark();Spacer(Modifier.width(10.dp));Column{Text("OctoPipe",fontSize=21.sp,fontWeight=FontWeight.Bold,color=White);Text("Your video space",fontSize=11.sp,color=Muted)}
-  Spacer(Modifier.weight(1f));IconButton(onClick=onSettings){Icon(Icons.Outlined.Settings,null,tint=Muted)};Text("0.3.0",fontSize=11.sp,color=Muted)
+ Row(Modifier.fillMaxWidth().background(Color(0xFF0B101C)).padding(horizontal=18.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically){
+  Box(Modifier.size(42.dp).background(Brush.linearGradient(listOf(Blue,Violet)),RoundedCornerShape(15.dp)),contentAlignment=Alignment.Center){AppMark(Modifier.size(34.dp))}
+  Spacer(Modifier.width(11.dp));Column(verticalArrangement=Arrangement.spacedBy(1.dp)){Text("OCTO",fontSize=10.sp,fontWeight=FontWeight.Black,color=Blue,letterSpacing=2.sp);Text("pipe",fontSize=20.sp,fontWeight=FontWeight.ExtraBold,color=White,lineHeight=20.sp)}
+  Spacer(Modifier.weight(1f));Box(Modifier.background(Panel,RoundedCornerShape(30.dp)).padding(horizontal=10.dp,vertical=6.dp)){Row(verticalAlignment=Alignment.CenterVertically){Box(Modifier.size(6.dp).background(Mint,RoundedCornerShape(50)));Spacer(Modifier.width(6.dp));Text("BETA",fontSize=9.sp,color=Mint,fontWeight=FontWeight.Bold)}}
+  IconButton(onClick=onSettings){Icon(Icons.Outlined.Tune,null,tint=Muted)}
  }
 }
 @Composable private fun AppMark(modifier:Modifier=Modifier){AsyncImage(model=com.octopus.octopipe.R.drawable.octopipe_icon,contentDescription="OctoPipe octopus icon",modifier=modifier.size(40.dp))}
 @Composable private fun TabIcon(tab:Tab){val icon=when(tab){Tab.HOME->Icons.Outlined.Home;Tab.EXPLORE->Icons.Outlined.Explore;Tab.DISCOVER->Icons.Outlined.VideoLibrary;Tab.SUBSCRIPTIONS->Icons.Outlined.Subscriptions;Tab.LIBRARY->Icons.Outlined.Bookmarks;else->Icons.Outlined.Settings};Icon(icon,contentDescription=tab.label)}
 
-@Composable private fun SearchPage(query:String,onQuery:(String)->Unit,provider:ServiceProvider,onProvider:(ServiceProvider)->Unit,onSearch:()->Unit,results:List<VideoItem>,loading:Boolean,error:String?,onPlay:(VideoItem)->Unit,home:Boolean){
- LazyColumn(Modifier.fillMaxSize().padding(horizontal=18.dp),verticalArrangement=Arrangement.spacedBy(13.dp),contentPadding=PaddingValues(top=8.dp,bottom=24.dp)){
-  item{Text(if(home)"Discover" else "Explore",fontSize=28.sp,fontWeight=FontWeight.Bold,color=White);Text("Search public video services.",color=Muted,fontSize=13.sp)}
-  item{
-   Column(verticalArrangement=Arrangement.spacedBy(9.dp)){
-    Row(Modifier.fillMaxWidth().background(Raised,RoundedCornerShape(15.dp)).padding(horizontal=13.dp,vertical=14.dp),verticalAlignment=Alignment.CenterVertically){
-     Icon(Icons.Outlined.Search,null,tint=Muted);Spacer(Modifier.width(9.dp))
-     BasicTextField(value=query,onValueChange=onQuery,modifier=Modifier.weight(1f),singleLine=true,cursorBrush=SolidColor(Blue),textStyle=MaterialTheme.typography.bodyLarge.copy(color=White),decorationBox={inner->if(query.isEmpty())Text("Search videos or channels",color=Muted,fontSize=14.sp);inner()})
+@Composable private fun SearchPage(query:String,onQuery:(String)->Unit,provider:ServiceProvider,onProvider:(ServiceProvider)->Unit,onSearch:()->Unit,results:List<VideoItem>,loading:Boolean,error:String?,onPlay:(VideoItem)->Unit,home:Boolean,onDiscover:()->Unit={}){
+ LazyColumn(Modifier.fillMaxSize().padding(horizontal=18.dp),verticalArrangement=Arrangement.spacedBy(15.dp),contentPadding=PaddingValues(top=12.dp,bottom=28.dp)){
+  if(home)item{
+   Box(Modifier.fillMaxWidth().heightIn(min=196.dp).background(Brush.linearGradient(listOf(Color(0xFF182A4A),Color(0xFF28245A),Color(0xFF142F40))),RoundedCornerShape(26.dp)).padding(19.dp)){
+    Box(Modifier.align(Alignment.TopEnd).size(142.dp).background(Brush.radialGradient(listOf(Color(0x5569D5FF),Color.Transparent)),RoundedCornerShape(100.dp)))
+    Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(9.dp)){
+     Row(verticalAlignment=Alignment.CenterVertically){Icon(Icons.Outlined.AutoAwesome,null,tint=Mint);Spacer(Modifier.width(6.dp));Text("A UNIVERSE OF VIDEO",fontSize=10.sp,color=Mint,fontWeight=FontWeight.Bold,letterSpacing=1.5.sp)}
+     Text("Find your\nnext obsession.",fontSize=31.sp,lineHeight=34.sp,fontWeight=FontWeight.ExtraBold,color=White)
+     Text("One search. Endless rabbit holes.",fontSize=12.sp,color=Color(0xFFD0D9EA))
+     Spacer(Modifier.height(2.dp))
+     OutlinedButton(onClick=onDiscover,colors=ButtonDefaults.outlinedButtonColors(contentColor=White),border=androidx.compose.foundation.BorderStroke(1.dp,Color(0x6679D9FF)),shape=RoundedCornerShape(14.dp)){
+      Text("Explore creators & playlists");Spacer(Modifier.width(7.dp));Icon(Icons.Outlined.ArrowForward,null)
+     }
     }
-    Row(horizontalArrangement=Arrangement.spacedBy(7.dp)){
-     ServiceProvider.entries.forEach{p->FilterChip(selected=provider==p,onClick={onProvider(p)},label={Text(p.title)})}
-     Button(onClick=onSearch,enabled=query.isNotBlank()){Icon(Icons.Outlined.Search,null);Text("Search")}
+   }
+  }else{
+   item{Column(verticalArrangement=Arrangement.spacedBy(3.dp)){Text("Search",fontSize=27.sp,fontWeight=FontWeight.ExtraBold,color=White);Text("Find something worth watching.",color=Muted,fontSize=13.sp)}}
+  }
+  item{
+   Column(verticalArrangement=Arrangement.spacedBy(10.dp)){
+    Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(17.dp)).padding(start=14.dp,end=7.dp,top=7.dp,bottom=7.dp),verticalAlignment=Alignment.CenterVertically){
+     Icon(Icons.Outlined.Search,null,tint=Blue);Spacer(Modifier.width(10.dp))
+     BasicTextField(value=query,onValueChange=onQuery,modifier=Modifier.weight(1f),singleLine=true,cursorBrush=SolidColor(Blue),textStyle=MaterialTheme.typography.bodyLarge.copy(color=White),decorationBox={inner->if(query.isEmpty())Text("Videos, topics, creators…",color=Muted,fontSize=13.sp);inner()})
+     Button(onClick=onSearch,enabled=query.isNotBlank(),shape=RoundedCornerShape(13.dp),contentPadding=PaddingValues(horizontal=15.dp,vertical=10.dp),colors=ButtonDefaults.buttonColors(containerColor=Blue,contentColor=Bg)){Icon(Icons.Outlined.ArrowForward,null)}
+    }
+    Row(horizontalArrangement=Arrangement.spacedBy(7.dp),verticalAlignment=Alignment.CenterVertically){
+     ServiceProvider.entries.forEach{p->FilterChip(selected=provider==p,onClick={onProvider(p)},label={Text(p.title,fontSize=11.sp)},colors=FilterChipDefaults.filterChipColors(selectedContainerColor=Color(0xFF203A54),selectedLabelColor=Blue,containerColor=Panel,labelColor=Muted))}
+     Spacer(Modifier.weight(1f))
+     Text(if(provider==ServiceProvider.YOUTUBE)"PUBLIC INDEX" else "FEDIVERSE",fontSize=8.sp,color=Muted,letterSpacing=1.sp)
     }
    }
   }
-  if(home)item{Text("YouTube via public Invidious instances · PeerTube via public API",color=Muted,fontSize=12.sp,lineHeight=18.sp)}
-  if(loading)item{Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.Center,verticalAlignment=Alignment.CenterVertically){CircularProgressIndicator(modifier=Modifier.size(20.dp),color=Blue,strokeWidth=2.dp);Spacer(Modifier.width(8.dp));Text("Searching…",color=Muted)}}
+  if(home&&results.isEmpty()&&!loading&&error==null)item{
+   Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(9.dp)){
+    MiniFeature("Creators",Icons.Outlined.Groups,Color(0xFF8C7BFF),onDiscover)
+    MiniFeature("Playlists",Icons.Outlined.QueueMusic,Blue,onDiscover)
+   }
+  }
+  if(results.isNotEmpty())item{Row(verticalAlignment=Alignment.CenterVertically){Text(if(home)"Picked for your search" else "Search results",fontSize=17.sp,fontWeight=FontWeight.Bold,color=White);Spacer(Modifier.weight(1f));Text(results.size.toString()+" results",fontSize=11.sp,color=Muted)}}
+  if(loading)item{Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.Center,verticalAlignment=Alignment.CenterVertically){CircularProgressIndicator(modifier=Modifier.size(20.dp),color=Blue,strokeWidth=2.dp);Spacer(Modifier.width(8.dp));Text("Finding videos…",color=Muted)}}
   if(error!=null)item{ErrorLabel(error)}
   items(results,key={it.service+it.id}){VideoCard(it,onPlay)}
+  if(home&&results.isEmpty()&&!loading)item{Text("Search across public video services, then save, follow or download what you love.",color=Muted,fontSize=11.sp,lineHeight=17.sp)}
  }
 }
+@Composable private fun MiniFeature(title:String,icon:androidx.compose.ui.graphics.vector.ImageVector,tint:Color,onClick:()->Unit){
+ Row(Modifier.weight(1f).background(Panel,RoundedCornerShape(15.dp)).clickable(onClick=onClick).padding(12.dp),verticalAlignment=Alignment.CenterVertically){Icon(icon,null,tint=tint);Spacer(Modifier.width(8.dp));Text(title,color=White,fontSize=12.sp,fontWeight=FontWeight.SemiBold);Spacer(Modifier.weight(1f));Icon(Icons.Outlined.ChevronRight,null,tint=Muted)}
+}
 @Composable private fun VideoCard(v:VideoItem,onPlay:(VideoItem)->Unit){
- Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(15.dp)).clickable{onPlay(v)}.padding(9.dp),verticalAlignment=Alignment.CenterVertically){
-  AsyncImage(model=v.thumbnail.ifBlank{null},contentDescription=null,modifier=Modifier.width(124.dp).height(76.dp).background(Raised,RoundedCornerShape(9.dp)))
-  Spacer(Modifier.width(11.dp));Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)){
-   Text(v.title,color=White,fontWeight=FontWeight.SemiBold,fontSize=13.sp,maxLines=2,overflow=TextOverflow.Ellipsis)
-   Text(v.author,color=Muted,fontSize=11.sp,maxLines=1);Text(v.service.lowercase()+" · "+duration(v.durationSeconds),color=Blue,fontSize=10.sp)
+ Column(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(19.dp)).clickable{onPlay(v)}.padding(9.dp)){
+  Box(Modifier.fillMaxWidth().height(174.dp).background(Raised,RoundedCornerShape(13.dp))){
+   AsyncImage(model=v.thumbnail.ifBlank{null},contentDescription=null,modifier=Modifier.fillMaxWidth().height(174.dp).background(Raised,RoundedCornerShape(13.dp)),contentScale=androidx.compose.ui.layout.ContentScale.Crop)
+   Box(Modifier.align(Alignment.BottomEnd).padding(8.dp).background(Color(0xDD080B14),RoundedCornerShape(7.dp)).padding(horizontal=7.dp,vertical=4.dp)){Text(duration(v.durationSeconds),fontSize=10.sp,color=White,fontWeight=FontWeight.SemiBold)}
+   Box(Modifier.align(Alignment.BottomStart).padding(8.dp).background(Color(0xCC162A43),RoundedCornerShape(7.dp)).padding(horizontal=7.dp,vertical=4.dp)){Text(v.service.uppercase(),fontSize=8.sp,color=Blue,fontWeight=FontWeight.Bold,letterSpacing=1.sp)}
+  }
+  Spacer(Modifier.height(10.dp))
+  Row(verticalAlignment=Alignment.Top){
+   Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)){
+    Text(v.title,color=White,fontWeight=FontWeight.Bold,fontSize=14.sp,maxLines=2,overflow=TextOverflow.Ellipsis,lineHeight=18.sp)
+    Text(v.author,color=Muted,fontSize=11.sp,maxLines=1)
+   }
+   Box(Modifier.padding(start=8.dp).size(34.dp).background(Color(0xFF1C3851),RoundedCornerShape(12.dp)),contentAlignment=Alignment.Center){Icon(Icons.Outlined.PlayArrow,null,tint=Blue)}
   }
  }
 }
