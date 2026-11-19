@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
   push:
     branches: [ main, feature/octopipe-newpipe-engine ]
+  pull_request:
+    branches: [ main ]
     paths:
       - 'OctoPipe/**'
       - '.github/workflows/build-octopipe.yml'
