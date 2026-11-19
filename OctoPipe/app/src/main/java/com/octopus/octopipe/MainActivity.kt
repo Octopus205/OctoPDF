@@ -18,6 +18,8 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,6 +30,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.media3.common.C
@@ -86,6 +93,8 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
  val store=remember{LibraryStore(context)}
  val prefs=remember{context.getSharedPreferences("octopipe_settings",android.content.Context.MODE_PRIVATE)}
  var darkMode by remember{mutableStateOf(prefs.getBoolean("dark_mode",true))}
+ val drawerState=rememberDrawerState(DrawerValue.Closed)
+ val folderPicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()){uri->if(uri!=null){runCatching{context.contentResolver.takePersistableUriPermission(uri,android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION)};prefs.edit().putString("download_tree_uri",uri.toString()).apply()}}
  LaunchedEffect(darkMode){applyPalette(darkMode)}
  val scope=rememberCoroutineScope()
  var tab by remember{mutableStateOf(Tab.HOME)}
@@ -137,7 +146,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
       Tab.entries.filter{it!=Tab.PLAYER}.forEach{t->NavigationRailItem(selected=tab==t,onClick={tab=t},icon={TabIcon(t)},label={Text(t.label)})}
      }
      Column(Modifier.weight(1f).fillMaxSize()){
-      if(!playerFullscreen)Header{tab=Tab.SETTINGS}
+      if(!playerFullscreen)Header{scope.launch{drawerState.open()}}
       Box(Modifier.weight(1f).fillMaxWidth()){
        when(tab){
         Tab.HOME->SearchPage(query,{query=it},provider,{provider=it},{search()},results,loading,error,::play,true){tab=Tab.DISCOVER}
@@ -173,6 +182,36 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
     }
    }
   }
+ }
+}
+@Composable private fun SettingsDrawer(provider:ServiceProvider,onProvider:(ServiceProvider)->Unit,dark:Boolean,onTheme:(Boolean)->Unit,onClose:()->Unit,onFolder:()->Unit){
+ LazyColumn(Modifier.fillMaxHeight().widthIn(min=280.dp,max=340.dp).padding(horizontal=16.dp),contentPadding=PaddingValues(top=28.dp,bottom=24.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
+  item{Row(verticalAlignment=Alignment.CenterVertically){AppMark(Modifier.size(42.dp));Spacer(Modifier.width(10.dp));Column{Text("OctoPipe",fontSize=22.sp,fontWeight=FontWeight.ExtraBold,color=White);Text("Control center",fontSize=11.sp,color=Muted)};Spacer(Modifier.weight(1f));IconButton(onClick=onClose){Icon(Icons.Outlined.Close,null,tint=Muted)}}}
+  item{HorizontalDivider(color=Raised)}
+  item{Text("APPEARANCE",fontSize=10.sp,color=Blue,fontWeight=FontWeight.Bold,letterSpacing=1.5.sp)}
+  item{Text("Theme",color=White,fontWeight=FontWeight.SemiBold)}
+  item{SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()){
+   SegmentedButton(selected=dark,onClick={onTheme(true)},shape=SegmentedButtonDefaults.itemShape(0,2)){Icon(Icons.Outlined.DarkMode,null);Spacer(Modifier.width(5.dp));Text("Dark")}
+   SegmentedButton(selected=!dark,onClick={onTheme(false)},shape=SegmentedButtonDefaults.itemShape(1,2)){Icon(Icons.Outlined.LightMode,null);Spacer(Modifier.width(5.dp));Text("Light")}
+  }}
+  item{HorizontalDivider(color=Raised)}
+  item{Text("VIDEO SERVICES",fontSize=10.sp,color=Blue,fontWeight=FontWeight.Bold,letterSpacing=1.5.sp)}
+  item{Text("Default search provider",color=White,fontWeight=FontWeight.SemiBold)}
+  items(ServiceProvider.entries){p->NavigationDrawerItem(label={Text(p.title)},selected=provider==p,onClick={onProvider(p)},icon={Icon(if(p==ServiceProvider.YOUTUBE)Icons.Outlined.SmartDisplay else Icons.Outlined.Public,null)},modifier=Modifier.padding(vertical=2.dp))}
+  item{HorizontalDivider(color=Raised)}
+  item{Text("DOWNLOADS",fontSize=10.sp,color=Blue,fontWeight=FontWeight.Bold,letterSpacing=1.5.sp)}
+  item{NavigationDrawerItem(label={Text("Choose download folder")},selected=false,onClick=onFolder,icon={Icon(Icons.Outlined.FolderOpen,null)})}
+  item{Text("Download location is remembered on this device.",fontSize=11.sp,color=Muted)}
+  item{HorizontalDivider(color=Raised)}
+  item{Text("PLAYBACK",fontSize=10.sp,color=Blue,fontWeight=FontWeight.Bold,letterSpacing=1.5.sp)}
+  item{InfoCard("Video quality","Choose Auto or an available resolution from the player")}
+  item{InfoCard("Screen fit","Fit, Zoom and Fill controls are available in the player")}
+  item{InfoCard("Background playback","Media3 playback service and Picture-in-Picture")}
+  item{HorizontalDivider(color=Raised)}
+  item{Text("LIBRARY & PRIVACY",fontSize=10.sp,color=Blue,fontWeight=FontWeight.Bold,letterSpacing=1.5.sp)}
+  item{InfoCard("Subscriptions","Saved locally on this device")}
+  item{InfoCard("History & favorites","Stored locally in OctoPipe")}
+  item{Text("OctoPipe · Experimental build",fontSize=11.sp,color=Muted)}
  }
 }
 @Composable private fun Header(onSettings:()->Unit){
