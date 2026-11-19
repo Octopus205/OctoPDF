@@ -38,10 +38,12 @@ private object YouTubeEngine:VideoEngine {
     }
     private fun <T> retry(block:(String)->T):T {
         val errors=mutableListOf<String>()
-        for(host in hosts()){try{return block(host)}catch(e:Exception){errors.add("${host.removePrefix("https://")}: ${e.message?: "failed"}")}}
+        val ordered=hosts().sortedByDescending{it==lastGoodHost}
+        for(host in ordered){try{val result=block(host);lastGoodHost=host;return result}catch(e:Exception){errors.add("${host.removePrefix("https://")}: ${e.message?: "failed"}")}}
         hosts=emptyList()
         error("YouTube public search providers are unavailable. Please retry. "+errors.take(2).joinToString(" | "))
     }
+    @Volatile private var lastGoodHost:String?=null
     override fun search(query:String):List<VideoItem> = retry { host ->
         val url=Uri.parse("$host/api/v1/search").buildUpon().appendQueryParameter("q",query).appendQueryParameter("type","video").build().toString()
         val a=ProviderHttp.array(url);val out=mutableListOf<VideoItem>()
@@ -58,18 +60,19 @@ private object YouTubeEngine:VideoEngine {
     }
     override fun resolve(video:VideoItem):StreamInfo = retry { host ->
         val o=ProviderHttp.json("$host/api/v1/videos/${video.id}")
-        val formats=o.optJSONArray("formatStreams");val candidates=mutableListOf<Triple<String,String,Int>>()
+        val formats=o.optJSONArray("formatStreams");val candidates=mutableListOf<VideoVariant>()
         if(formats!=null)for(i in 0 until formats.length()){
             val f=formats.optJSONObject(i)?:continue;val u=f.optString("url");val mime=f.optString("type").substringBefore(';')
             if(!u.startsWith("http")||!mime.startsWith("video/"))continue
             if(f.optString("container").let{it.isNotBlank()&&it!="mp4"})continue
             val h=Regex("(\\d+)p").find(f.optString("qualityLabel"))?.groupValues?.get(1)?.toIntOrNull()?:0
-            candidates.add(Triple(u,if(mime.isBlank())"video/mp4" else mime,h))
+            candidates.add(VideoVariant(if(h>0)"$h p".replace(" ","") else "Auto",u,if(mime.isBlank())"video/mp4" else mime,h,f.optInt("bitrate")))
         }
-        val direct=candidates.maxByOrNull{it.third}
+        val variants=candidates.distinctBy{it.height}.sortedByDescending{it.height}
+        val direct=variants.firstOrNull()
         val hls=o.optString("hlsUrl").takeIf{it.startsWith("http")}
-        val play=direct?.first?:hls?:error("No compatible public stream found")
-        val mime=direct?.second?:"application/x-mpegURL"
+        val play=direct?.url?:hls?:error("No compatible public stream found")
+        val mime=direct?.mimeType?:"application/x-mpegURL"
         val caps=mutableListOf<CaptionTrack>();val ca=o.optJSONArray("captions")
         if(ca!=null)for(i in 0 until ca.length()){val c=ca.optJSONObject(i)?:continue;val u=c.optString("url");if(u.startsWith("http"))caps.add(CaptionTrack(c.optString("label",c.optString("languageCode")),c.optString("languageCode","und"),u))}
         val adaptive=o.optJSONArray("adaptiveFormats")
@@ -84,7 +87,7 @@ private object YouTubeEngine:VideoEngine {
                 if(f.optLong("bitrate")>=128000){audioUrl=u;audioMime=type;break}
             }
         }
-        StreamInfo(video,play,mime,caps,direct?.first,direct?.second?:"video/mp4",audioUrl,audioMime)
+        StreamInfo(video,play,mime,caps,direct?.url,direct?.mimeType?:"video/mp4",audioUrl,audioMime,variants)
     }
 }
 private object PeerTubeEngine:VideoEngine {
