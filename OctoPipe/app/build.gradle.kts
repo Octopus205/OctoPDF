@@ -8,7 +8,7 @@ android {
  compileSdk=36
  defaultConfig { applicationId="com.octopus.octopipe"; minSdk=26; targetSdk=35; versionCode=2; versionName="0.2.0"; vectorDrawables { useSupportLibrary=true } }
  buildTypes { debug { applicationIdSuffix=".debug" }; release { isMinifyEnabled=false } }
- compileOptions { sourceCompatibility=JavaVersion.VERSION_17; targetCompatibility=JavaVersion.VERSION_17 }
+ compileOptions { sourceCompatibility=JavaVersion.VERSION_17; targetCompatibility=JavaVersion.VERSION_17; isCoreLibraryDesugaringEnabled=true }
  buildFeatures { compose=true }
 }
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
@@ -26,6 +26,8 @@ dependencies {
  implementation("androidx.media3:media3-ui:1.5.1")
  implementation("androidx.media3:media3-session:1.5.1")
  implementation("com.squareup.okhttp3:okhttp:4.12.0")
+ implementation("com.github.teamnewpipe:NewPipeExtractor:v0.27.1")
+ coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.1.5")
  implementation("io.coil-kt:coil-compose:2.7.0")
  debugImplementation("androidx.compose.ui:ui-tooling")
 }
