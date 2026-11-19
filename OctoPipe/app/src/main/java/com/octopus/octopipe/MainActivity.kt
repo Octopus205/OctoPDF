@@ -109,7 +109,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
     val wide=maxWidth>=600.dp
     Row(Modifier.fillMaxSize()){
      if(wide)NavigationRail(containerColor=Bg,header={AppMark(Modifier.padding(vertical=18.dp))}){
-      Tab.entries.take(4).forEach{t->NavigationRailItem(selected=tab==t,onClick={tab=t},icon={TabIcon(t)},label={Text(t.label)})}
+      Tab.entries.filter{it!=Tab.PLAYER}.forEach{t->NavigationRailItem(selected=tab==t,onClick={tab=t},icon={TabIcon(t)},label={Text(t.label)})}
      }
      Column(Modifier.weight(1f).fillMaxSize()){
       Header()
@@ -131,7 +131,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
        }
       }
       if(!wide)NavigationBar(containerColor=Bg){
-       Tab.entries.take(4).forEach{t->NavigationBarItem(selected=tab==t,onClick={tab=t},icon={TabIcon(t)},label={Text(t.label)})}
+       Tab.entries.filter{it!=Tab.PLAYER && it!=Tab.SETTINGS}.forEach{t->NavigationBarItem(selected=tab==t,onClick={tab=t},icon={TabIcon(t)},label={Text(t.label)})}
        if(current!=null)NavigationBarItem(selected=tab==Tab.PLAYER,onClick={tab=Tab.PLAYER},icon={Icon(Icons.Outlined.PlayArrow,null)},label={Text("Player")})
       }
      }
@@ -147,7 +147,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
  }
 }
 @Composable private fun AppMark(modifier:Modifier=Modifier){AsyncImage(model=com.octopus.octopipe.R.drawable.octopipe_icon,contentDescription="OctoPipe octopus icon",modifier=modifier.size(40.dp))}
-@Composable private fun TabIcon(tab:Tab){val icon=when(tab){Tab.HOME->Icons.Outlined.Home;Tab.EXPLORE->Icons.Outlined.Explore;Tab.LIBRARY->Icons.Outlined.Bookmarks;else->Icons.Outlined.Settings};Icon(icon,contentDescription=tab.label)}
+@Composable private fun TabIcon(tab:Tab){val icon=when(tab){Tab.HOME->Icons.Outlined.Home;Tab.EXPLORE->Icons.Outlined.Explore;Tab.DISCOVER->Icons.Outlined.VideoLibrary;Tab.SUBSCRIPTIONS->Icons.Outlined.Subscriptions;Tab.LIBRARY->Icons.Outlined.Bookmarks;else->Icons.Outlined.Settings};Icon(icon,contentDescription=tab.label)}
 
 @Composable private fun SearchPage(query:String,onQuery:(String)->Unit,provider:ServiceProvider,onProvider:(ServiceProvider)->Unit,onSearch:()->Unit,results:List<VideoItem>,loading:Boolean,error:String?,onPlay:(VideoItem)->Unit,home:Boolean){
  LazyColumn(Modifier.fillMaxSize().padding(horizontal=18.dp),verticalArrangement=Arrangement.spacedBy(13.dp),contentPadding=PaddingValues(top=8.dp,bottom=24.dp)){
