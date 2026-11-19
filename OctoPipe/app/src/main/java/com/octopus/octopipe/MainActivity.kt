@@ -204,7 +204,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),LIBRARY
      DropdownMenuItem(text={Text("Turn subtitles off")},onClick={
       player.trackSelectionParameters=player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT,true).build()
       onCaptionMenu(false)
-     })}
+     })
     }
    }
    if(segments.isNotEmpty())Text("SponsorBlock active · "+segments.size+" segments",color=Blue,fontSize=12.sp)
