@@ -92,12 +92,12 @@ private object PeerTubeEngine:VideoEngine {
         };return out
     }
     override fun resolve(video:VideoItem):StreamInfo{
-        val o=ProviderHttp.json("$base/api/v1/videos/${video.id}");val a=o.optJSONArray("files")?:JSONArray();val direct=mutableListOf<Triple<String,String,Int>>()
-        for(i in 0 until a.length()){val f=a.optJSONObject(i)?:continue;val u=f.optString("fileUrl").ifBlank{f.optString("fileDownloadUrl")};if(u.startsWith("http"))direct.add(Triple(u,f.optString("mimeType","video/mp4"),f.optJSONObject("resolution")?.optInt("id")?:0))}
-        val best=direct.maxByOrNull{it.third};val pls=o.optJSONArray("streamingPlaylists")?:JSONArray();var hls:String?=null
+        val o=ProviderHttp.json("$base/api/v1/videos/${video.id}");val a=o.optJSONArray("files")?:JSONArray();val direct=mutableListOf<VideoVariant>()
+        for(i in 0 until a.length()){val f=a.optJSONObject(i)?:continue;val u=f.optString("fileUrl").ifBlank{f.optString("fileDownloadUrl")};if(u.startsWith("http")){val h=f.optJSONObject("resolution")?.optInt("id")?:0;direct.add(VideoVariant(if(h>0)"${h}p" else "Auto",u,f.optString("mimeType","video/mp4"),h))}}
+        val variants=direct.sortedByDescending{it.height};val best=variants.firstOrNull();val pls=o.optJSONArray("streamingPlaylists")?:JSONArray();var hls:String?=null
         for(i in 0 until pls.length()){val u=pls.optJSONObject(i)?.optString("playlistUrl");if(u?.startsWith("http")==true){hls=u;break}}
-        val play=best?.first?:hls?:error("No public PeerTube stream found");val mime=best?.second?:"application/x-mpegURL"
-        return StreamInfo(video,play,mime,emptyList(),best?.first,best?.second?:"video/mp4")
+        val play=best?.url?:hls?:error("No public PeerTube stream found");val mime=best?.mimeType?:"application/x-mpegURL"
+        return StreamInfo(video,play,mime,emptyList(),best?.url,best?.mimeType?:"video/mp4",variants=variants)
     }
 }
 object VideoRepository {
