@@ -4,6 +4,7 @@ import android.app.PictureInPictureParams
 import android.content.ComponentName
 import android.os.Build
 import android.os.Bundle
+import android.content.pm.ActivityInfo
 import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -37,6 +38,7 @@ import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.AspectRatioFrameLayout
 import coil.compose.AsyncImage
 import com.google.common.util.concurrent.ListenableFuture
 import com.octopus.octopipe.data.*
@@ -90,6 +92,10 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
  var current by remember{mutableStateOf<StreamInfo?>(null)}
  var segments by remember{mutableStateOf<List<SponsorSegment>>(emptyList())}
  var captionMenu by remember{mutableStateOf(false)}
+ var qualityMenu by remember{mutableStateOf(false)}
+ var playerFullscreen by remember{mutableStateOf(false)}
+ var selectedQuality by remember{mutableStateOf("Auto")}
+ var resizeMode by remember{mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT)}
  fun search(){if(query.isBlank())return;scope.launch{loading=true;error=null;try{results.clear();results.addAll(VideoRepository.search(provider,query));tab=Tab.EXPLORE}catch(e:Exception){error=e.message?:"Search failed."}finally{loading=false}}}
  fun searchDiscovery(){if(query.isBlank())return;scope.launch{loading=true;error=null;try{
   if(discoverMode=="Channels"){channelResults.clear();channelResults.addAll(DiscoveryRepository.searchChannels(provider,query))}
@@ -98,7 +104,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
  fun openPlaylist(p:PlaylistItem){if(p.id.isBlank()){activePlaylist=null;playlistVideos.clear();return};scope.launch{loading=true;error=null;activePlaylist=p;try{playlistVideos.clear();playlistVideos.addAll(DiscoveryRepository.playlistVideos(p))}catch(e:Exception){error=e.message?:"Could not load playlist"}finally{loading=false}}}
  fun downloadPlaylist(){val list=playlistVideos.toList();scope.launch{loading=true;var count=0;for(v in list){try{val info=VideoRepository.resolve(v);if(info.downloadUrl!=null){DownloadHelper.enqueue(context,info);count++}}catch(_:Exception){}};error="Queued "+count+" of "+list.size+" videos";loading=false}}
  fun play(v:VideoItem){scope.launch{error=null;tab=Tab.PLAYER;try{
-  val info=VideoRepository.resolve(v);current=info;store.addHistory(v)
+  val info=VideoRepository.resolve(v);current=info;selectedQuality=info.variants.firstOrNull()?.label?:"Auto";store.addHistory(v)
   history.removeAll{it.id==v.id&&it.service==v.service};history.add(0,v)
   segments=if(v.service==ServiceProvider.YOUTUBE.name)SponsorBlockRepository.segments(v.id)else emptyList()
   val subtitles=info.captions.map{c->MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(c.url)).setMimeType(MimeTypes.TEXT_VTT).setLanguage(c.languageCode).build()}
@@ -128,7 +134,12 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
         })
         Tab.LIBRARY->LibraryPage(favorites,history,::play)
         Tab.SETTINGS->SettingsPage(provider,{provider=it})
-        Tab.PLAYER->PlayerPage(player,current,segments,error,{captionMenu=it},captionMenu,{current?.let{DownloadHelper.enqueue(context,it)}},{current?.let{DownloadHelper.enqueueAudio(context,it)}},onPip){v->
+        Tab.PLAYER->PlayerPage(player,current,segments,error,{captionMenu=it},captionMenu,{current?.let{DownloadHelper.enqueue(context,it)}},{current?.let{DownloadHelper.enqueueAudio(context,it)}},onPip,qualityMenu,{qualityMenu=it},{label->
+         val info=current?:return@PlayerPage
+         val variant=info.variants.firstOrNull{it.label==label}?:return@PlayerPage
+         val pos=player?.currentPosition?:0L;val wasPlaying=player?.isPlaying==true
+         selectedQuality=label;player?.setMediaItem(MediaItem.fromUri(variant.url),pos);player?.prepare();if(wasPlaying)player?.play()
+        },selectedQuality,playerFullscreen,{playerFullscreen=it},{resizeMode=when(resizeMode){AspectRatioFrameLayout.RESIZE_MODE_FIT->AspectRatioFrameLayout.RESIZE_MODE_ZOOM;AspectRatioFrameLayout.RESIZE_MODE_ZOOM->AspectRatioFrameLayout.RESIZE_MODE_FILL;else->AspectRatioFrameLayout.RESIZE_MODE_FIT}},resizeMode){v->
          val added=store.toggle(v);favorites.removeAll{it.id==v.id&&it.service==v.service};if(added)favorites.add(0,v)
         }
        }
@@ -243,11 +254,22 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
   Text("OctoPipe 0.2.0 · Development build",color=Muted,fontSize=12.sp)
  }
 }
-@Composable private fun PlayerPage(player:Player?,info:StreamInfo?,segments:List<SponsorSegment>,error:String?,onCaptionMenu:(Boolean)->Unit,captionMenu:Boolean,onDownload:()->Unit,onAudioDownload:()->Unit,onPip:()->Unit,onFavorite:(VideoItem)->Unit){
+@Composable private fun PlayerPage(player:Player?,info:StreamInfo?,segments:List<SponsorSegment>,error:String?,onCaptionMenu:(Boolean)->Unit,captionMenu:Boolean,onDownload:()->Unit,onAudioDownload:()->Unit,onPip:()->Unit,qualityMenu:Boolean,onQualityMenu:(Boolean)->Unit,onQuality:(String)->Unit,selectedQuality:String,fullscreen:Boolean,onFullscreen:(Boolean)->Unit,onResize:()->Unit,resizeMode:Int,onFavorite:(VideoItem)->Unit){
  Column(Modifier.fillMaxSize().padding(15.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
   Text("Now playing",fontSize=25.sp,fontWeight=FontWeight.Bold,color=White)
   if(player!=null&&info!=null){
-   AndroidView(factory={ctx->PlayerView(ctx).apply{this.player=player;useController=true;setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)}},update={it.player=player},modifier=Modifier.fillMaxWidth().height(220.dp).background(Color.Black,RoundedCornerShape(12.dp)))
+   Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(7.dp),verticalAlignment=Alignment.CenterVertically){
+    Box{OutlinedButton(onClick={onQualityMenu(true)}){Icon(Icons.Outlined.HighQuality,null);Text(selectedQuality);Icon(Icons.Outlined.ArrowDropDown,null)}
+     DropdownMenu(expanded=qualityMenu,onDismissRequest={onQualityMenu(false)}){
+      DropdownMenuItem(text={Text("Auto")},onClick={onQuality("Auto")})
+      info.variants.forEach{variant->DropdownMenuItem(text={Text(variant.label)},onClick={onQuality(variant.label)})}
+     }
+    }
+    OutlinedButton(onClick=onResize){Icon(Icons.Outlined.AspectRatio,null);Text("Fit")}
+    Spacer(Modifier.weight(1f))
+    IconButton(onClick={onFullscreen(!fullscreen)}){Icon(if(fullscreen)Icons.Outlined.FullscreenExit else Icons.Outlined.Fullscreen,null,tint=Blue)}
+   }
+   AndroidView(factory={ctx->PlayerView(ctx).apply{this.player=player;useController=true;resizeMode=resizeMode;setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)}},update={it.player=player;it.resizeMode=resizeMode},modifier=Modifier.fillMaxWidth().then(if(fullscreen)Modifier.weight(1f) else Modifier.height(225.dp)).background(Color.Black,RoundedCornerShape(if(fullscreen)0.dp else 12.dp)))
    Text(info.video.title,color=White,fontSize=16.sp,fontWeight=FontWeight.SemiBold,maxLines=2,overflow=TextOverflow.Ellipsis);Text(info.video.author,color=Muted,fontSize=12.sp)
    Row(horizontalArrangement=Arrangement.spacedBy(5.dp)){
     OutlinedButton(onClick=onDownload,enabled=info.downloadUrl!=null){Icon(Icons.Outlined.Download,null);Text("Video")}
