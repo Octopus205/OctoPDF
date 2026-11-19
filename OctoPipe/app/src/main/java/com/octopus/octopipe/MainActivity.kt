@@ -117,6 +117,12 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
        when(tab){
         Tab.HOME->SearchPage(query,{query=it},provider,{provider=it},{search()},results,loading,error,::play,true)
         Tab.EXPLORE->SearchPage(query,{query=it},provider,{provider=it},{search()},results,loading,error,::play,false)
+        Tab.DISCOVER->DiscoverPage(query,{query=it},provider,{provider=it},discoverMode,{discoverMode=it;channelResults.clear();playlistResults.clear()},{searchDiscovery()},channelResults,playlistResults,playlistVideos,activePlaylist,loading,error,{ch->
+         val added=store.toggleSubscription(ch);subscriptions.removeAll{it.id==ch.id&&it.service==ch.service};if(added)subscriptions.add(0,ch)
+        },::openPlaylist,::downloadPlaylist,::play)
+        Tab.SUBSCRIPTIONS->SubscriptionsPage(subscriptions,{ch->
+         store.toggleSubscription(ch);subscriptions.removeAll{it.id==ch.id&&it.service==ch.service}
+        })
         Tab.LIBRARY->LibraryPage(favorites,history,::play)
         Tab.SETTINGS->SettingsPage(provider,{provider=it})
         Tab.PLAYER->PlayerPage(player,current,segments,error,{captionMenu=it},captionMenu,{current?.let{DownloadHelper.enqueue(context,it)}},onPip){v->
