@@ -314,44 +314,46 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
  }
 }
 @Composable private fun PlayerPage(player:Player?,info:StreamInfo?,segments:List<SponsorSegment>,error:String?,onCaptionMenu:(Boolean)->Unit,captionMenu:Boolean,onDownload:()->Unit,onAudioDownload:()->Unit,onPip:()->Unit,qualityMenu:Boolean,onQualityMenu:(Boolean)->Unit,onQuality:(String)->Unit,selectedQuality:String,fullscreen:Boolean,onFullscreen:(Boolean)->Unit,onResize:()->Unit,resizeMode:Int,onFavorite:(VideoItem)->Unit){
- Column(Modifier.fillMaxSize().padding(15.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
-  Text("Now playing",fontSize=25.sp,fontWeight=FontWeight.Bold,color=White)
+ Column(Modifier.fillMaxSize().then(if(fullscreen)Modifier else Modifier.padding(15.dp)),verticalArrangement=Arrangement.spacedBy(10.dp)){
   if(player!=null&&info!=null){
-   Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(7.dp),verticalAlignment=Alignment.CenterVertically){
-    Box{OutlinedButton(onClick={onQualityMenu(true)}){Icon(Icons.Outlined.HighQuality,null);Text(selectedQuality);Icon(Icons.Outlined.ArrowDropDown,null)}
-     DropdownMenu(expanded=qualityMenu,onDismissRequest={onQualityMenu(false)}){
-      DropdownMenuItem(text={Text("Auto")},onClick={onQuality("Auto")})
-      info.variants.forEach{variant->DropdownMenuItem(text={Text(variant.label)},onClick={onQuality(variant.label)})}
+   if(fullscreen){
+    Box(Modifier.fillMaxSize().background(Color.Black)){
+     AndroidView(factory={ctx->PlayerView(ctx).apply{this.player=player;useController=true;resizeMode=resizeMode;setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)}},update={it.player=player;it.resizeMode=resizeMode},modifier=Modifier.fillMaxSize())
+     IconButton(onClick={onFullscreen(false)},modifier=Modifier.align(Alignment.TopEnd).padding(12.dp).background(Color(0x88000000),RoundedCornerShape(30.dp))){Icon(Icons.Outlined.FullscreenExit,null,tint=Color.White)}
+    }
+   }else{
+    Text("Now playing",fontSize=25.sp,fontWeight=FontWeight.Bold,color=White)
+    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(7.dp),verticalAlignment=Alignment.CenterVertically){
+     Box{OutlinedButton(onClick={onQualityMenu(true)}){Icon(Icons.Outlined.HighQuality,null);Text(selectedQuality);Icon(Icons.Outlined.ArrowDropDown,null)}
+      DropdownMenu(expanded=qualityMenu,onDismissRequest={onQualityMenu(false)}){
+       DropdownMenuItem(text={Text("Auto")},onClick={onQuality("Auto")})
+       info.variants.forEach{variant->DropdownMenuItem(text={Text(variant.label)},onClick={onQuality(variant.label)})}
+      }
+     }
+     OutlinedButton(onClick=onResize){Icon(Icons.Outlined.AspectRatio,null);Text(when(resizeMode){AspectRatioFrameLayout.RESIZE_MODE_FIT->"Fit";AspectRatioFrameLayout.RESIZE_MODE_ZOOM->"Zoom";else->"Fill"})}
+     Spacer(Modifier.weight(1f))
+     IconButton(onClick={onFullscreen(true)}){Icon(Icons.Outlined.Fullscreen,null,tint=Blue)}
+    }
+    AndroidView(factory={ctx->PlayerView(ctx).apply{this.player=player;useController=true;resizeMode=resizeMode;setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)}},update={it.player=player;it.resizeMode=resizeMode},modifier=Modifier.fillMaxWidth().height(225.dp).background(Color.Black,RoundedCornerShape(12.dp)))
+    Text(info.video.title,color=White,fontSize=16.sp,fontWeight=FontWeight.SemiBold,maxLines=2,overflow=TextOverflow.Ellipsis);Text(info.video.author,color=Muted,fontSize=12.sp)
+    Row(horizontalArrangement=Arrangement.spacedBy(5.dp)){
+     OutlinedButton(onClick=onDownload,enabled=info.downloadUrl!=null){Icon(Icons.Outlined.Download,null);Text("Video")}
+     OutlinedButton(onClick=onAudioDownload,enabled=info.audioDownloadUrl!=null){Icon(Icons.Outlined.MusicNote,null);Text("Audio")}
+     OutlinedButton(onClick=onPip){Icon(Icons.Outlined.PictureInPictureAlt,null);Text("PiP")}
+     OutlinedButton(onClick={onFavorite(info.video)}){Icon(Icons.Outlined.BookmarkAdd,null);Text("Save")}
+    }
+    if(info.captions.isNotEmpty())Box{
+     OutlinedButton(onClick={onCaptionMenu(true)}){Text("Subtitles")}
+     DropdownMenu(expanded=captionMenu,onDismissRequest={onCaptionMenu(false)}){
+      info.captions.forEach{caption->DropdownMenuItem(text={Text(caption.label)},onClick={
+       player.trackSelectionParameters=player.trackSelectionParameters.buildUpon().setPreferredTextLanguage(caption.languageCode).setTrackTypeDisabled(C.TRACK_TYPE_TEXT,false).build();onCaptionMenu(false)
+      })}
+      DropdownMenuItem(text={Text("Turn subtitles off")},onClick={player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT,true).let{params->{player.trackSelectionParameters=params;onCaptionMenu(false)}}})
      }
     }
-    OutlinedButton(onClick=onResize){Icon(Icons.Outlined.AspectRatio,null);Text("Fit")}
-    Spacer(Modifier.weight(1f))
-    IconButton(onClick={onFullscreen(!fullscreen)}){Icon(if(fullscreen)Icons.Outlined.FullscreenExit else Icons.Outlined.Fullscreen,null,tint=Blue)}
+    if(info.downloadUrl==null)Text("Offline video download unavailable for this stream format.",color=Muted,fontSize=11.sp)
+    if(segments.isNotEmpty())Text("SponsorBlock active · "+segments.size+" segments",color=Blue,fontSize=12.sp)
    }
-   AndroidView(factory={ctx->PlayerView(ctx).apply{this.player=player;useController=true;resizeMode=resizeMode;setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)}},update={it.player=player;it.resizeMode=resizeMode},modifier=Modifier.fillMaxWidth().then(if(fullscreen)Modifier.weight(1f) else Modifier.height(225.dp)).background(Color.Black,RoundedCornerShape(if(fullscreen)0.dp else 12.dp)))
-   Text(info.video.title,color=White,fontSize=16.sp,fontWeight=FontWeight.SemiBold,maxLines=2,overflow=TextOverflow.Ellipsis);Text(info.video.author,color=Muted,fontSize=12.sp)
-   Row(horizontalArrangement=Arrangement.spacedBy(5.dp)){
-    OutlinedButton(onClick=onDownload,enabled=info.downloadUrl!=null){Icon(Icons.Outlined.Download,null);Text("Video")}
-    OutlinedButton(onClick=onAudioDownload,enabled=info.audioDownloadUrl!=null){Icon(Icons.Outlined.MusicNote,null);Text("Audio")}
-    OutlinedButton(onClick=onPip){Icon(Icons.Outlined.PictureInPictureAlt,null);Text("PiP")}
-    OutlinedButton(onClick={onFavorite(info.video)}){Icon(Icons.Outlined.BookmarkAdd,null);Text("Save")}
-   }
-   if(info.captions.isNotEmpty())Box{
-    OutlinedButton(onClick={onCaptionMenu(true)}){Text("Subtitles")}
-    DropdownMenu(expanded=captionMenu,onDismissRequest={onCaptionMenu(false)}){
-     info.captions.forEach{c->DropdownMenuItem(text={Text(c.label)},onClick={
-      player.trackSelectionParameters=player.trackSelectionParameters.buildUpon().setPreferredTextLanguage(c.languageCode).setTrackTypeDisabled(C.TRACK_TYPE_TEXT,false).build()
-      onCaptionMenu(false)
-     })}
-     DropdownMenuItem(text={Text("Turn subtitles off")},onClick={
-      player.trackSelectionParameters=player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT,true).build()
-      onCaptionMenu(false)
-     })
-    }
-   }
-   if(info.downloadUrl==null)Text("Offline download unavailable for this stream format.",color=Muted,fontSize=11.sp)
-   if(segments.isNotEmpty())Text("SponsorBlock active · "+segments.size+" segments",color=Blue,fontSize=12.sp)
-   Text("Background audio is managed by the media session service.",color=Muted,fontSize=11.sp)
   }else EmptyCard("Select a video from Search or Explore to start playback.")
   if(error!=null)ErrorLabel(error)
  }
