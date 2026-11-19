@@ -46,14 +46,24 @@ import com.octopus.octopipe.playback.OctoPlaybackService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private val Bg=Color(0xFF080B14)
-private val Panel=Color(0xFF111827)
-private val Raised=Color(0xFF19243A)
-private val Blue=Color(0xFF69D5FF)
+private val BgState=mutableStateOf(Color(0xFF080B14))
+private val PanelState=mutableStateOf(Color(0xFF111827))
+private val RaisedState=mutableStateOf(Color(0xFF19243A))
+private val BlueState=mutableStateOf(Color(0xFF69D5FF))
+private val WhiteState=mutableStateOf(Color(0xFFF5F7FF))
+private val MutedState=mutableStateOf(Color(0xFF9BAAC2))
+private val Bg get()=BgState.value
+private val Panel get()=PanelState.value
+private val Raised get()=RaisedState.value
+private val Blue get()=BlueState.value
 private val Violet=Color(0xFF8C7BFF)
 private val Mint=Color(0xFF72F0C1)
-private val White=Color(0xFFF5F7FF)
-private val Muted=Color(0xFF9BAAC2)
+private val White get()=WhiteState.value
+private val Muted get()=MutedState.value
+private fun applyPalette(dark:Boolean){
+ if(dark){BgState.value=Color(0xFF080B14);PanelState.value=Color(0xFF111827);RaisedState.value=Color(0xFF19243A);BlueState.value=Color(0xFF69D5FF);WhiteState.value=Color(0xFFF5F7FF);MutedState.value=Color(0xFF9BAAC2)}
+ else{BgState.value=Color(0xFFF2F5FA);PanelState.value=Color(0xFFFFFFFF);RaisedState.value=Color(0xFFE5ECF5);BlueState.value=Color(0xFF087EBD);WhiteState.value=Color(0xFF172338);MutedState.value=Color(0xFF617189)}
+}
 
 class MainActivity:ComponentActivity(){
  private var future:ListenableFuture<MediaController>?=null
@@ -74,6 +84,9 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
 @Composable private fun OctoPipeApp(player:Player?,onPip:()->Unit){
  val context=androidx.compose.ui.platform.LocalContext.current
  val store=remember{LibraryStore(context)}
+ val prefs=remember{context.getSharedPreferences("octopipe_settings",android.content.Context.MODE_PRIVATE)}
+ var darkMode by remember{mutableStateOf(prefs.getBoolean("dark_mode",true))}
+ LaunchedEffect(darkMode){applyPalette(darkMode)}
  val scope=rememberCoroutineScope()
  var tab by remember{mutableStateOf(Tab.HOME)}
  var provider by remember{mutableStateOf(ServiceProvider.YOUTUBE)}
