@@ -64,7 +64,7 @@ class MainActivity:ComponentActivity(){
  override fun onUserLeaveHint(){super.onUserLeaveHint();if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.O&&controller?.isPlaying==true)openPip()}
  override fun onDestroy(){future?.let{MediaController.releaseFuture(it)};future=null;super.onDestroy()}
 }
-private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),LIBRARY("Library"),SETTINGS("Settings"),PLAYER("Player")}
+private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVER("Discover"),SUBSCRIPTIONS("Subscriptions"),LIBRARY("Library"),SETTINGS("Settings"),PLAYER("Player")}
 
 @Composable private fun OctoPipeApp(player:Player?,onPip:()->Unit){
  val context=androidx.compose.ui.platform.LocalContext.current
