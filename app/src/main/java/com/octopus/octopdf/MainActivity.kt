@@ -33,6 +33,9 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -53,12 +56,21 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.text.PDFTextStripper
+import java.io.IOException
 import androidx.compose.ui.viewinterop.AndroidView
 import com.ahmer.pdfviewer.PDFView
 import com.ahmer.pdfviewer.util.FitPolicy
 
 private val Context.octoDataStore by preferencesDataStore(name = "octopdf_settings")
 private val RECENT_KEY = stringPreferencesKey("recent_documents")
+private val FAVORITES_KEY = stringPreferencesKey("favorite_documents")
+private val OPEN_TABS_KEY = stringPreferencesKey("open_tabs")
+private val ACTIVE_TAB_KEY = stringPreferencesKey("active_tab")
 
 private val Ink = Color(0xFF0A111B)
 private val Navy = Color(0xFF111F2E)
@@ -72,6 +84,43 @@ private val TextMuted = Color(0xFFA9B9CA)
 private enum class ReadingMode { LIGHT, NIGHT }
 
 private data class RecentDocument(val uri: Uri, val name: String)
+private data class PdfSearchHit(val pageIndex: Int, val snippet: String, val matchCount: Int)
+
+private suspend fun searchPdfDocument(context: Context, uri: Uri, query: String): List<PdfSearchHit> =
+    withContext(Dispatchers.IO) {
+        val normalizedQuery = query.trim()
+        require(normalizedQuery.isNotEmpty()) { "اكتب كلمة أو عبارة للبحث." }
+        PDFBoxResourceLoader.init(context.applicationContext)
+        val input = context.contentResolver.openInputStream(uri)
+            ?: throw IOException("تعذر فتح المستند للبحث.")
+        input.use { stream ->
+            PDDocument.load(stream).use { document ->
+                val hits = mutableListOf<PdfSearchHit>()
+                val matcher = Regex(Regex.escape(normalizedQuery), RegexOption.IGNORE_CASE)
+                for (pageIndex in 0 until document.numberOfPages) {
+                    val stripper = PDFTextStripper().apply {
+                        startPage = pageIndex + 1
+                        endPage = pageIndex + 1
+                        sortByPosition = true
+                    }
+                    val pageText = stripper.getText(document)
+                    val matches = matcher.findAll(pageText).toList()
+                    if (matches.isNotEmpty()) {
+                        val first = matches.first()
+                        val from = (first.range.first - 48).coerceAtLeast(0)
+                        val to = (first.range.last + 81).coerceAtMost(pageText.length)
+                        val snippet = pageText.substring(from, to)
+                            .replace('\n', ' ')
+                            .replace('\r', ' ')
+                            .replace(Regex("\\s+"), " ")
+                            .trim()
+                        hits += PdfSearchHit(pageIndex, snippet, matches.size)
+                    }
+                }
+                hits
+            }
+        }
+    }
 
 private sealed interface PdfOpenState {
     data object Idle : PdfOpenState
@@ -141,15 +190,41 @@ private fun OctoPdfApp(incomingUri: Uri?) {
     var secondaryUri by remember { mutableStateOf<Uri?>(null) }
     var secondaryName by remember { mutableStateOf("") }
     val openTabs = remember { mutableStateListOf<RecentDocument>() }
+    var tabsRestored by remember { mutableStateOf(false) }
 
     val recentRaw by context.octoDataStore.data.collectAsState(initial = emptyPreferences())
     val recentDocuments = remember(recentRaw) {
         recentRaw[RECENT_KEY].orEmpty().lineSequence().mapNotNull(::decodeRecent).toList()
     }
+    val favoriteUris = remember(recentRaw[FAVORITES_KEY]) {
+        recentRaw[FAVORITES_KEY].orEmpty().lineSequence().filter { it.isNotBlank() }.toSet()
+    }
 
-    LaunchedEffect(incomingUri) {
-        if (incomingUri != null && openTabs.none { it.uri == incomingUri }) {
-            openTabs.add(RecentDocument(incomingUri, queryDisplayName(context, incomingUri)))
+    LaunchedEffect(Unit) {
+        val stored = context.octoDataStore.data.first()
+        val restoredTabs = stored[OPEN_TABS_KEY].orEmpty().lineSequence().mapNotNull(::decodeRecent)
+        openTabs.addAll(restoredTabs)
+        if (incomingUri != null) {
+            val incoming = RecentDocument(incomingUri, queryDisplayName(context, incomingUri))
+            if (openTabs.none { it.uri == incomingUri }) openTabs.add(0, incoming)
+            selectedUri = incomingUri
+            documentName = incoming.name
+        } else {
+            val activeUri = stored[ACTIVE_TAB_KEY]?.takeIf { it.isNotBlank() }?.let(Uri::parse)
+            val active = openTabs.firstOrNull { it.uri == activeUri } ?: openTabs.firstOrNull()
+            selectedUri = active?.uri
+            documentName = active?.name.orEmpty()
+            if (active != null) section = AppSection.READER
+        }
+        tabsRestored = true
+    }
+
+    LaunchedEffect(openTabs.toList(), selectedUri, tabsRestored) {
+        if (tabsRestored) {
+            context.octoDataStore.edit { prefs ->
+                prefs[OPEN_TABS_KEY] = openTabs.joinToString("\n") { encodeRecent(it.uri, it.name) }
+                prefs[ACTIVE_TAB_KEY] = selectedUri?.toString().orEmpty()
+            }
         }
     }
 
@@ -158,8 +233,20 @@ private fun OctoPdfApp(incomingUri: Uri?) {
             context.octoDataStore.edit { prefs ->
                 val value = encodeRecent(uri, name)
                 val updated = (listOf(value) + prefs[RECENT_KEY].orEmpty().lineSequence()
-                    .filter { it.isNotBlank() && it.substringBefore("\\t") != uri.toString() }.toList()).take(30)
-                prefs[RECENT_KEY] = updated.joinToString("\\n")
+                    .filter { it.isNotBlank() && it.substringBefore("\t") != uri.toString() }.toList()).take(30)
+                prefs[RECENT_KEY] = updated.joinToString("\n")
+            }
+        }
+    }
+
+    fun toggleFavorite(document: RecentDocument) {
+        scope.launch {
+            context.octoDataStore.edit { prefs ->
+                val updated = prefs[FAVORITES_KEY].orEmpty().lineSequence()
+                    .filter { it.isNotBlank() }.toMutableSet()
+                val key = document.uri.toString()
+                if (!updated.add(key)) updated.remove(key)
+                prefs[FAVORITES_KEY] = updated.joinToString("\n")
             }
         }
     }
@@ -325,8 +412,10 @@ private fun OctoPdfApp(incomingUri: Uri?) {
                             if (selectedUri == null) {
                                 HomeScreen(
                                     recent = recentDocuments,
+                                    favoriteUris = favoriteUris,
                                     modifier = Modifier.fillMaxSize(),
                                     onOpen = { openDocument(it.uri, it.name) },
+                                    onToggleFavorite = { toggleFavorite(it) },
                                     onPick = { picker.launch(arrayOf("application/pdf")) }
                                 )
                             } else {
@@ -340,8 +429,10 @@ private fun OctoPdfApp(incomingUri: Uri?) {
                             }
                         }
                         AppSection.RECENT -> HomeScreen(
-                            recent = recentDocuments, modifier = Modifier.fillMaxSize(),
+                            recent = recentDocuments, favoriteUris = favoriteUris,
+                            modifier = Modifier.fillMaxSize(),
                             onOpen = { openDocument(it.uri, it.name) },
+                            onToggleFavorite = { toggleFavorite(it) },
                             onPick = { picker.launch(arrayOf("application/pdf")) }
                         )
                         AppSection.SPLIT -> {
@@ -501,13 +592,19 @@ private fun EngineCard(title: String, subtitle: String, body: String) {
 @Composable
 private fun HomeScreen(
     recent: List<RecentDocument>,
+    favoriteUris: Set<String>,
     modifier: Modifier = Modifier,
     onOpen: (RecentDocument) -> Unit,
+    onToggleFavorite: (RecentDocument) -> Unit,
     onPick: () -> Unit
 ) {
     BoxWithConstraints(modifier.background(Ink)) {
         val tablet = maxWidth >= 600.dp
         val contentWidth = if (tablet) 720.dp else maxWidth
+        var showFavoritesOnly by remember { mutableStateOf(false) }
+        val visibleDocuments = remember(recent, favoriteUris, showFavoritesOnly) {
+            if (showFavoritesOnly) recent.filter { it.uri.toString() in favoriteUris } else recent
+        }
         LazyColumn(
             modifier = Modifier.widthIn(max = contentWidth).align(Alignment.TopCenter).fillMaxWidth()
                 .padding(horizontal = if (tablet) 28.dp else 18.dp),
@@ -555,7 +652,22 @@ private fun HomeScreen(
                     }
                 }
             }
-            if (recent.isEmpty()) {
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = !showFavoritesOnly,
+                        onClick = { showFavoritesOnly = false },
+                        label = { Text("الكل") }
+                    )
+                    FilterChip(
+                        selected = showFavoritesOnly,
+                        onClick = { showFavoritesOnly = true },
+                        leadingIcon = { Icon(Icons.Default.Star, null, modifier = Modifier.size(16.dp)) },
+                        label = { Text("المفضلة · ${favoriteUris.size}") }
+                    )
+                }
+            }
+            if (visibleDocuments.isEmpty()) {
                 item {
                     Surface(color = Panel, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
                         Column(
@@ -564,13 +676,20 @@ private fun HomeScreen(
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Icon(Icons.Default.Book, null, tint = TextMuted, modifier = Modifier.size(36.dp))
-                            Text("لا توجد مستندات بعد", fontWeight = FontWeight.SemiBold)
-                            Text("اختر ملف PDF من جهازك وسيظهر هنا تلقائياً.", color = TextMuted, fontSize = 13.sp)
+                            Text(
+                                if (showFavoritesOnly) "لا توجد مستندات مفضلة بعد" else "لا توجد مستندات بعد",
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                if (showFavoritesOnly) "اضغط على النجمة بجوار أي مستند لإضافته للمفضلة."
+                                else "اختر ملف PDF من جهازك وسيظهر هنا تلقائياً.",
+                                color = TextMuted, fontSize = 13.sp
+                            )
                         }
                     }
                 }
             } else {
-                items(recent, key = { it.uri.toString() }) { doc ->
+                items(visibleDocuments, key = { it.uri.toString() }) { doc ->
                     Card(
                         onClick = { onOpen(doc) },
                         modifier = Modifier.fillMaxWidth(),
@@ -588,6 +707,13 @@ private fun HomeScreen(
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Text(doc.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
                                 Text("مستند PDF", color = TextMuted, fontSize = 11.sp)
+                            }
+                            IconButton(onClick = { onToggleFavorite(doc) }) {
+                                Icon(
+                                    if (doc.uri.toString() in favoriteUris) Icons.Default.Star else Icons.Default.StarBorder,
+                                    contentDescription = if (doc.uri.toString() in favoriteUris) "إزالة من المفضلة" else "إضافة للمفضلة",
+                                    tint = if (doc.uri.toString() in favoriteUris) Color(0xFFFFC857) else TextMuted
+                                )
                             }
                             Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = Accent)
                         }
@@ -632,6 +758,30 @@ private fun ReaderScreen(
     var controlsVisible by remember(uri) { mutableStateOf(true) }
     var menuExpanded by remember { mutableStateOf(false) }
     var pdfView by remember(uri) { mutableStateOf<PDFView?>(null) }
+    var searchOpen by remember(uri) { mutableStateOf(false) }
+    var searchQuery by remember(uri) { mutableStateOf("") }
+    var searchResults by remember(uri) { mutableStateOf<List<PdfSearchHit>>(emptyList()) }
+    var searchLoading by remember(uri) { mutableStateOf(false) }
+    var searchHasRun by remember(uri) { mutableStateOf(false) }
+    var searchError by remember(uri) { mutableStateOf<String?>(null) }
+
+    fun performPdfSearch() {
+        val query = searchQuery.trim()
+        if (query.isEmpty() || searchLoading) return
+        scope.launch {
+            searchLoading = true
+            searchHasRun = true
+            searchError = null
+            searchResults = emptyList()
+            try {
+                searchResults = searchPdfDocument(context, uri, query)
+            } catch (error: Exception) {
+                searchError = error.localizedMessage ?: "تعذر البحث داخل هذا المستند."
+            } finally {
+                searchLoading = false
+            }
+        }
+    }
 
     Column(modifier.background(Ink)) {
         if (controlsVisible) {
@@ -649,6 +799,9 @@ private fun ReaderScreen(
                             if (totalPages > 0) "صفحة $pageNumber من $totalPages" else "جارٍ تحميل المستند",
                             color = TextMuted, fontSize = 11.sp
                         )
+                    }
+                    IconButton(onClick = { searchOpen = true }) {
+                        Icon(Icons.Default.Search, contentDescription = "بحث داخل المستند", tint = Accent)
                     }
                     Box {
                         IconButton(onClick = { menuExpanded = true }) {
@@ -776,5 +929,85 @@ private fun ReaderScreen(
             }
         }
     }
+
+    if (searchOpen) {
+        AlertDialog(
+            onDismissRequest = { searchOpen = false },
+            title = { Text("بحث داخل المستند") },
+            text = {
+                Column(
+                    Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = {
+                            searchQuery = it
+                            searchHasRun = false
+                            searchError = null
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = { Text("كلمة أو عبارة") }
+                    )
+                    if (searchLoading) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                            Text("جارٍ فحص صفحات المستند…", color = TextMuted)
+                        }
+                    }
+                    searchError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    if (searchHasRun && !searchLoading && searchError == null && searchResults.isEmpty()) {
+                        Text("لم يتم العثور على النص. قد يكون المستند ممسوحًا ضوئيًا كصورة.", color = TextMuted)
+                    }
+                    if (searchResults.isNotEmpty()) {
+                        Text("عُثر على النص في ${searchResults.size} صفحة", color = Cyan, fontSize = 12.sp)
+                        LazyColumn(
+                            Modifier.fillMaxWidth().heightIn(max = 270.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            items(searchResults) { hit ->
+                                TextButton(
+                                    onClick = {
+                                        pdfView?.jumpTo(hit.pageIndex, true)
+                                        searchOpen = false
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(Modifier.fillMaxWidth()) {
+                                        Text(
+                                            "صفحة ${hit.pageIndex + 1} · ${hit.matchCount} تطابق",
+                                            color = Cyan,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        Text(
+                                            hit.snippet,
+                                            color = TextMuted,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { performPdfSearch() },
+                    enabled = searchQuery.isNotBlank() && !searchLoading
+                ) { Text("بحث") }
+            },
+            dismissButton = {
+                TextButton(onClick = { searchOpen = false }) { Text("إغلاق") }
+            }
+        )
+    }
+
 }
 
