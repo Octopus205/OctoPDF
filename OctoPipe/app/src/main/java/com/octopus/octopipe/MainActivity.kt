@@ -113,18 +113,20 @@ private fun OctoPipeApp() {
                             .fillMaxSize()
                     ) {
                         TopBar()
-                        when (Destination.entries[selected]) {
-                            Destination.Home -> HomeScreen(
-                                query = query,
-                                onQueryChange = { query = it },
-                                onExplore = { selected = 1 }
-                            )
-                            Destination.Explore -> ExploreScreen(
-                                query = query,
-                                onQueryChange = { query = it }
-                            )
-                            Destination.Library -> LibraryScreen()
-                            Destination.Settings -> SettingsScreen()
+                        Box(Modifier.weight(1f).fillMaxWidth()) {
+                            when (Destination.entries[selected]) {
+                                Destination.Home -> HomeScreen(
+                                    query = query,
+                                    onQueryChange = { query = it },
+                                    onExplore = { selected = 1 }
+                                )
+                                Destination.Explore -> ExploreScreen(
+                                    query = query,
+                                    onQueryChange = { query = it }
+                                )
+                                Destination.Library -> LibraryScreen()
+                                Destination.Settings -> SettingsScreen()
+                            }
                         }
 
                         if (!wideLayout) {
@@ -212,7 +214,7 @@ private fun HomeScreen(
 ) {
     LazyColumn(
         modifier = Modifier
-            .weightSafe()
+            .fillMaxSize()
             .padding(horizontal = 20.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 8.dp, bottom = 24.dp)
@@ -380,6 +382,3 @@ private fun InfoTile(title: String, subtitle: String, modifier: Modifier = Modif
     }
 }
 
-// A small helper keeps the list layout explicit without requiring a Scaffold dependency.
-@Composable
-private fun Modifier.weightSafe(): Modifier = this.fillMaxSize()
