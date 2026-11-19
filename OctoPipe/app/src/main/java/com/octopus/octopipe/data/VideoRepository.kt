@@ -54,7 +54,7 @@ private object YouTubeEngine:VideoEngine {
             val thumbs=o.optJSONArray("videoThumbnails")
             var thumb="https://i.ytimg.com/vi/$id/hqdefault.jpg"
             if(thumbs!=null)for(j in thumbs.length()-1 downTo 0){val u=thumbs.optJSONObject(j)?.optString("url").orEmpty();if(u.startsWith("http")){thumb=u;break}}
-            out.add(VideoItem(id,o.optString("title","Untitled"),o.optString("author","Unknown channel"),thumb,o.optLong("lengthSeconds"),o.optLong("viewCount"),ServiceProvider.YOUTUBE.name,"https://www.youtube.com/watch?v=$id"))
+            out.add(VideoItem(id,o.optString("title","Untitled"),o.optString("author","Unknown channel"),thumb,o.optLong("lengthSeconds"),o.optLong("viewCount"),ServiceProvider.YOUTUBE.name,"https://www.youtube.com/watch?v=$id",o.optString("authorId").takeIf{it.isNotBlank()},o.optString("authorUrl").takeIf{it.isNotBlank()}?.let{if(it.startsWith("http"))it else "https://www.youtube.com$it"}))
         }
         if(out.isEmpty())error("No video results from this instance");out
     }
@@ -98,7 +98,7 @@ private object PeerTubeEngine:VideoEngine {
         val a=ProviderHttp.json(url).optJSONArray("data")?:JSONArray();val out=mutableListOf<VideoItem>()
         for(i in 0 until a.length()){val o=a.optJSONObject(i)?:continue;val id=o.optString("uuid").ifBlank{ o.optString("id") };if(id.isBlank())continue
             val t=o.optString("thumbnailPath");val acc=o.optJSONObject("account")
-            out.add(VideoItem(id,o.optString("name","Untitled"),acc?.optString("displayName","PeerTube creator")?:"PeerTube creator",if(t.startsWith("http"))t else if(t.startsWith("/"))base+t else "",o.optLong("duration"),o.optLong("views"),ServiceProvider.PEERTUBE.name,o.optString("url","$base/videos/watch/$id")))
+            val channel=o.optJSONObject("channel");out.add(VideoItem(id,o.optString("name","Untitled"),acc?.optString("displayName","PeerTube creator")?:"PeerTube creator",if(t.startsWith("http"))t else if(t.startsWith("/"))base+t else "",o.optLong("duration"),o.optLong("views"),ServiceProvider.PEERTUBE.name,o.optString("url","$base/videos/watch/$id"),channel?.optString("id")?.takeIf{it.isNotBlank()},channel?.optString("url")?.takeIf{it.isNotBlank()}))
         };return out
     }
     override fun resolve(video:VideoItem):StreamInfo{
