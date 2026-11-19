@@ -128,14 +128,15 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
  fun openPlaylist(p:PlaylistItem){if(p.id.isBlank()){activePlaylist=null;playlistVideos.clear();return};scope.launch{loading=true;error=null;activePlaylist=p;try{playlistVideos.clear();playlistVideos.addAll(DiscoveryRepository.playlistVideos(p))}catch(e:Exception){error=e.message?:"Could not load playlist"}finally{loading=false}}}
  fun openChannel(ch:ChannelItem){activeChannel=ch;tab=Tab.CHANNEL;scope.launch{loading=true;error=null;try{channelVideos.clear();channelVideos.addAll(DiscoveryRepository.channelVideos(ch))}catch(e:Exception){error=e.message?:"Could not load channel"}finally{loading=false}}}
  fun downloadPlaylist(){val list=playlistVideos.toList();scope.launch{loading=true;var count=0;for(v in list){try{val info=VideoRepository.resolve(v);if(info.downloadUrl!=null){DownloadHelper.enqueue(context,info);count++}}catch(_:Exception){}};error="Queued "+count+" of "+list.size+" videos";loading=false}}
- fun play(v:VideoItem){scope.launch{error=null;tab=Tab.PLAYER;try{
+ fun openVideoChannel(v:VideoItem){val id=v.channelId?:return;val url=v.channelUrl?:if(v.service==ServiceProvider.YOUTUBE.name)"https://www.youtube.com/channel/$id" else "https://peertube.tv/video-channels/$id";openChannel(ChannelItem(id,v.author,"",v.service,url))}
+ fun play(v:VideoItem){scope.launch{loading=true;error=null;tab=Tab.PLAYER;try{
   val info=VideoRepository.resolve(v);current=info;selectedQuality=info.variants.firstOrNull()?.label?:"Auto";store.addHistory(v)
   history.removeAll{it.id==v.id&&it.service==v.service};history.add(0,v)
   segments=if(v.service==ServiceProvider.YOUTUBE.name)SponsorBlockRepository.segments(v.id)else emptyList()
   val subtitles=info.captions.map{c->MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(c.url)).setMimeType(MimeTypes.TEXT_VTT).setLanguage(c.languageCode).build()}
   val item=MediaItem.Builder().setUri(info.streamUrl).setMediaMetadata(MediaMetadata.Builder().setTitle(v.title).setArtist(v.author).build()).setSubtitleConfigurations(subtitles).build()
   player?.setMediaItem(item);player?.prepare();player?.play()
- }catch(e:Exception){error=e.message?:"Unable to play this video."}}}
+ }catch(e:Exception){error=e.message?:"Unable to play this video."}finally{loading=false}}}
  LaunchedEffect(player,segments,current){val p=player?:return@LaunchedEffect;val skipped=mutableSetOf<Int>();while(true){if(p.isPlaying){val pos=p.currentPosition/1000.0;segments.forEachIndexed{i,s->if(pos>=s.startSeconds&&pos<s.endSeconds&&skipped.add(i))p.seekTo((s.endSeconds*1000).toLong())};if(pos<2)skipped.clear()};delay(450)}}
  MaterialTheme{
   ModalNavigationDrawer(drawerState=drawerState,drawerContent={ModalDrawerSheet(drawerContainerColor=Panel){SettingsDrawer(provider,{provider=it},darkMode,{darkMode=it;prefs.edit().putBoolean("dark_mode",it).apply()},{scope.launch{drawerState.close()}},{folderPicker.launch(null)})}}){
@@ -144,14 +145,14 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
     val wide=maxWidth>=600.dp
     Row(Modifier.fillMaxSize()){
      if(wide)NavigationRail(containerColor=Bg,header={AppMark(Modifier.padding(vertical=18.dp))}){
-      Tab.entries.filter{it!=Tab.PLAYER}.forEach{t->NavigationRailItem(selected=tab==t,onClick={tab=t},icon={TabIcon(t)},label={Text(t.label)})}
+      Tab.entries.filter{it!=Tab.PLAYER&&it!=Tab.CHANNEL}.forEach{t->NavigationRailItem(selected=tab==t,onClick={tab=t},icon={TabIcon(t)},label={Text(t.label)})}
      }
      Column(Modifier.weight(1f).fillMaxSize()){
       if(!playerFullscreen)Header{scope.launch{drawerState.open()}}
       Box(Modifier.weight(1f).fillMaxWidth()){
        when(tab){
-        Tab.HOME->SearchPage(query,{query=it},provider,{provider=it},{search()},results,loading,error,::play,true){tab=Tab.DISCOVER}
-        Tab.EXPLORE->SearchPage(query,{query=it},provider,{provider=it},{search()},results,loading,error,::play,false)
+        Tab.HOME->SearchPage(query,{query=it},provider,{provider=it},{search()},results,loading,error,::play,true,{tab=Tab.DISCOVER},::openVideoChannel)
+        Tab.EXPLORE->SearchPage(query,{query=it},provider,{provider=it},{search()},results,loading,error,::play,false,{},::openVideoChannel)
         Tab.DISCOVER->DiscoverPage(query,{query=it},provider,{provider=it},discoverMode,{discoverMode=it;channelResults.clear();playlistResults.clear()},{searchDiscovery()},channelResults,playlistResults,playlistVideos,activePlaylist,loading,error,{ch->
          val added=store.toggleSubscription(ch);subscriptions.removeAll{it.id==ch.id&&it.service==ch.service};if(added)subscriptions.add(0,ch)
         },::openPlaylist,::downloadPlaylist,::play,::openChannel)
@@ -163,7 +164,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
         },::play){tab=Tab.DISCOVER}
         Tab.LIBRARY->LibraryPage(favorites,history,::play)
         Tab.SETTINGS->SettingsPage(provider,{provider=it})
-        Tab.PLAYER->PlayerPage(player,current,segments,error,{captionMenu=it},captionMenu,{current?.let{DownloadHelper.enqueue(context,it)}},{current?.let{DownloadHelper.enqueueAudio(context,it)}},onPip,qualityMenu,{qualityMenu=it},{label->
+        Tab.PLAYER->PlayerPage(player,current,segments,loading,error,{captionMenu=it},captionMenu,{current?.let{DownloadHelper.enqueue(context,it)}},{current?.let{DownloadHelper.enqueueAudio(context,it)}},onPip,qualityMenu,{qualityMenu=it},{label->
          val info=current?:return@PlayerPage
          val variant=info.variants.firstOrNull{it.label==label}
          val target=variant?.url?:info.streamUrl
@@ -174,10 +175,10 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
         }
        }
       }
-      if(!wide&&!playerFullscreen)NavigationBar(containerColor=Color(0xFF0D1320),contentColor=White,tonalElevation=0.dp){
+      if(!wide&&!playerFullscreen)NavigationBar(containerColor=Bg,contentColor=White,tonalElevation=0.dp){
        listOf(Tab.HOME,Tab.DISCOVER,Tab.SUBSCRIPTIONS,Tab.LIBRARY).forEach{t->
         NavigationBarItem(selected=tab==t,onClick={tab=t},icon={TabIcon(t)},label={Text(t.label,fontSize=10.sp)},alwaysShowLabel=true,
-         colors=NavigationBarItemDefaults.colors(selectedIconColor=Blue,selectedTextColor=Blue,indicatorColor=Color(0xFF1A2940),unselectedIconColor=Muted,unselectedTextColor=Muted))
+         colors=NavigationBarItemDefaults.colors(selectedIconColor=Blue,selectedTextColor=Blue,indicatorColor=Raised,unselectedIconColor=Muted,unselectedTextColor=Muted))
        }
       }
      }
@@ -218,7 +219,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
  }
 }
 @Composable private fun Header(onSettings:()->Unit){
- Row(Modifier.fillMaxWidth().background(Color(0xFF0B101C)).padding(horizontal=18.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically){
+ Row(Modifier.fillMaxWidth().background(Bg).padding(horizontal=18.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically){
   Box(Modifier.size(42.dp).background(Brush.linearGradient(listOf(Blue,Violet)),RoundedCornerShape(15.dp)),contentAlignment=Alignment.Center){AppMark(Modifier.size(34.dp))}
   Spacer(Modifier.width(11.dp));Column(verticalArrangement=Arrangement.spacedBy(1.dp)){Text("OCTO",fontSize=10.sp,fontWeight=FontWeight.Black,color=Blue,letterSpacing=2.sp);Text("pipe",fontSize=20.sp,fontWeight=FontWeight.ExtraBold,color=White,lineHeight=20.sp)}
   Spacer(Modifier.weight(1f));Box(Modifier.background(Panel,RoundedCornerShape(30.dp)).padding(horizontal=10.dp,vertical=6.dp)){Row(verticalAlignment=Alignment.CenterVertically){Box(Modifier.size(6.dp).background(Mint,RoundedCornerShape(50)));Spacer(Modifier.width(6.dp));Text("BETA",fontSize=9.sp,color=Mint,fontWeight=FontWeight.Bold)}}
@@ -226,9 +227,9 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
  }
 }
 @Composable private fun AppMark(modifier:Modifier=Modifier){AsyncImage(model=com.octopus.octopipe.R.drawable.octopipe_icon,contentDescription="OctoPipe octopus icon",modifier=modifier.size(40.dp))}
-@Composable private fun TabIcon(tab:Tab){val icon=when(tab){Tab.HOME->Icons.Outlined.Home;Tab.EXPLORE->Icons.Outlined.Explore;Tab.DISCOVER->Icons.Outlined.VideoLibrary;Tab.SUBSCRIPTIONS->Icons.Outlined.Subscriptions;Tab.LIBRARY->Icons.Outlined.Bookmarks;else->Icons.Outlined.Settings};Icon(icon,contentDescription=tab.label)}
+@Composable private fun TabIcon(tab:Tab){val icon=when(tab){Tab.HOME->Icons.Outlined.Home;Tab.EXPLORE->Icons.Outlined.Explore;Tab.DISCOVER->Icons.Outlined.VideoLibrary;Tab.SUBSCRIPTIONS->Icons.Outlined.Subscriptions;Tab.CHANNEL->Icons.Outlined.Groups;Tab.LIBRARY->Icons.Outlined.Bookmarks;else->Icons.Outlined.Settings};Icon(icon,contentDescription=tab.label)}
 
-@Composable private fun SearchPage(query:String,onQuery:(String)->Unit,provider:ServiceProvider,onProvider:(ServiceProvider)->Unit,onSearch:()->Unit,results:List<VideoItem>,loading:Boolean,error:String?,onPlay:(VideoItem)->Unit,home:Boolean,onDiscover:()->Unit={}){
+@Composable private fun SearchPage(query:String,onQuery:(String)->Unit,provider:ServiceProvider,onProvider:(ServiceProvider)->Unit,onSearch:()->Unit,results:List<VideoItem>,loading:Boolean,error:String?,onPlay:(VideoItem)->Unit,home:Boolean,onDiscover:()->Unit={},onChannel:(VideoItem)->Unit={}){
  LazyColumn(Modifier.fillMaxSize().padding(horizontal=18.dp),verticalArrangement=Arrangement.spacedBy(15.dp),contentPadding=PaddingValues(top=12.dp,bottom=28.dp)){
   if(home)item{
    Box(Modifier.fillMaxWidth().heightIn(min=196.dp).background(Brush.linearGradient(listOf(Color(0xFF182A4A),Color(0xFF28245A),Color(0xFF142F40))),RoundedCornerShape(26.dp)).padding(19.dp)){
@@ -269,14 +270,14 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
   if(results.isNotEmpty())item{Row(verticalAlignment=Alignment.CenterVertically){Text(if(home)"Picked for your search" else "Search results",fontSize=17.sp,fontWeight=FontWeight.Bold,color=White);Spacer(Modifier.weight(1f));Text(results.size.toString()+" results",fontSize=11.sp,color=Muted)}}
   if(loading)item{Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.Center,verticalAlignment=Alignment.CenterVertically){CircularProgressIndicator(modifier=Modifier.size(20.dp),color=Blue,strokeWidth=2.dp);Spacer(Modifier.width(8.dp));Text("Finding videos…",color=Muted)}}
   if(error!=null)item{ErrorLabel(error)}
-  items(results,key={it.service+it.id}){VideoCard(it,onPlay)}
+  items(results,key={it.service+it.id}){VideoCard(it,onPlay,onChannel)}
   if(home&&results.isEmpty()&&!loading)item{Text("Search across public video services, then save, follow or download what you love.",color=Muted,fontSize=11.sp,lineHeight=17.sp)}
  }
 }
 @Composable private fun MiniFeature(title:String,icon:androidx.compose.ui.graphics.vector.ImageVector,tint:Color,onClick:()->Unit,modifier:Modifier=Modifier){
  Row(modifier.background(Panel,RoundedCornerShape(15.dp)).clickable(onClick=onClick).padding(12.dp),verticalAlignment=Alignment.CenterVertically){Icon(icon,null,tint=tint);Spacer(Modifier.width(8.dp));Text(title,color=White,fontSize=12.sp,fontWeight=FontWeight.SemiBold);Spacer(Modifier.weight(1f));Icon(Icons.Outlined.ChevronRight,null,tint=Muted)}
 }
-@Composable private fun VideoCard(v:VideoItem,onPlay:(VideoItem)->Unit){
+@Composable private fun VideoCard(v:VideoItem,onPlay:(VideoItem)->Unit,onChannel:(VideoItem)->Unit={}){
  Column(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(19.dp)).clickable{onPlay(v)}.padding(9.dp)){
   Box(Modifier.fillMaxWidth().height(174.dp).background(Raised,RoundedCornerShape(13.dp))){
    AsyncImage(model=v.thumbnail.ifBlank{null},contentDescription=null,modifier=Modifier.fillMaxWidth().height(174.dp).background(Raised,RoundedCornerShape(13.dp)),contentScale=androidx.compose.ui.layout.ContentScale.Crop)
@@ -287,7 +288,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
   Row(verticalAlignment=Alignment.Top){
    Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)){
     Text(v.title,color=White,fontWeight=FontWeight.Bold,fontSize=14.sp,maxLines=2,overflow=TextOverflow.Ellipsis,lineHeight=18.sp)
-    Text(v.author,color=Muted,fontSize=11.sp,maxLines=1)
+    Text(v.author,color=Muted,fontSize=11.sp,maxLines=1,modifier=if(v.channelId!=null)Modifier.clickable{onChannel(v)} else Modifier)
    }
    Box(Modifier.padding(start=8.dp).size(34.dp).background(Color(0xFF1C3851),RoundedCornerShape(12.dp)),contentAlignment=Alignment.Center){Icon(Icons.Outlined.PlayArrow,null,tint=Blue)}
   }
@@ -315,7 +316,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
   Text("OctoPipe 0.2.0 · Development build",color=Muted,fontSize=12.sp)
  }
 }
-@Composable private fun PlayerPage(player:Player?,info:StreamInfo?,segments:List<SponsorSegment>,error:String?,onCaptionMenu:(Boolean)->Unit,captionMenu:Boolean,onDownload:()->Unit,onAudioDownload:()->Unit,onPip:()->Unit,qualityMenu:Boolean,onQualityMenu:(Boolean)->Unit,onQuality:(String)->Unit,selectedQuality:String,fullscreen:Boolean,onFullscreen:(Boolean)->Unit,onResize:()->Unit,resizeMode:Int,onFavorite:(VideoItem)->Unit){
+@Composable private fun PlayerPage(player:Player?,info:StreamInfo?,segments:List<SponsorSegment>,loading:Boolean,error:String?,onCaptionMenu:(Boolean)->Unit,captionMenu:Boolean,onDownload:()->Unit,onAudioDownload:()->Unit,onPip:()->Unit,qualityMenu:Boolean,onQualityMenu:(Boolean)->Unit,onQuality:(String)->Unit,selectedQuality:String,fullscreen:Boolean,onFullscreen:(Boolean)->Unit,onResize:()->Unit,resizeMode:Int,onFavorite:(VideoItem)->Unit){
  Column(Modifier.fillMaxSize().then(if(fullscreen)Modifier else Modifier.padding(15.dp)),verticalArrangement=Arrangement.spacedBy(10.dp)){
   if(player!=null&&info!=null){
    if(fullscreen){
