@@ -118,7 +118,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
       Header{tab=Tab.SETTINGS}
       Box(Modifier.weight(1f).fillMaxWidth()){
        when(tab){
-        Tab.HOME->SearchPage(query,{query=it},provider,{provider=it},{search()},results,loading,error,::play,true)
+        Tab.HOME->SearchPage(query,{query=it},provider,{provider=it},{search()},results,loading,error,::play,true){tab=Tab.DISCOVER}
         Tab.EXPLORE->SearchPage(query,{query=it},provider,{provider=it},{search()},results,loading,error,::play,false)
         Tab.DISCOVER->DiscoverPage(query,{query=it},provider,{provider=it},discoverMode,{discoverMode=it;channelResults.clear();playlistResults.clear()},{searchDiscovery()},channelResults,playlistResults,playlistVideos,activePlaylist,loading,error,{ch->
          val added=store.toggleSubscription(ch);subscriptions.removeAll{it.id==ch.id&&it.service==ch.service};if(added)subscriptions.add(0,ch)
@@ -190,8 +190,8 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
   }
   if(home&&results.isEmpty()&&!loading&&error==null)item{
    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(9.dp)){
-    MiniFeature("Creators",Icons.Outlined.Groups,Color(0xFF8C7BFF),onDiscover)
-    MiniFeature("Playlists",Icons.Outlined.QueueMusic,Blue,onDiscover)
+    MiniFeature("Creators",Icons.Outlined.Groups,Color(0xFF8C7BFF),onDiscover,Modifier.weight(1f))
+    MiniFeature("Playlists",Icons.Outlined.QueueMusic,Blue,onDiscover,Modifier.weight(1f))
    }
   }
   if(results.isNotEmpty())item{Row(verticalAlignment=Alignment.CenterVertically){Text(if(home)"Picked for your search" else "Search results",fontSize=17.sp,fontWeight=FontWeight.Bold,color=White);Spacer(Modifier.weight(1f));Text(results.size.toString()+" results",fontSize=11.sp,color=Muted)}}
@@ -201,8 +201,8 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
   if(home&&results.isEmpty()&&!loading)item{Text("Search across public video services, then save, follow or download what you love.",color=Muted,fontSize=11.sp,lineHeight=17.sp)}
  }
 }
-@Composable private fun MiniFeature(title:String,icon:androidx.compose.ui.graphics.vector.ImageVector,tint:Color,onClick:()->Unit){
- Row(Modifier.weight(1f).background(Panel,RoundedCornerShape(15.dp)).clickable(onClick=onClick).padding(12.dp),verticalAlignment=Alignment.CenterVertically){Icon(icon,null,tint=tint);Spacer(Modifier.width(8.dp));Text(title,color=White,fontSize=12.sp,fontWeight=FontWeight.SemiBold);Spacer(Modifier.weight(1f));Icon(Icons.Outlined.ChevronRight,null,tint=Muted)}
+@Composable private fun MiniFeature(title:String,icon:androidx.compose.ui.graphics.vector.ImageVector,tint:Color,onClick:()->Unit,modifier:Modifier=Modifier){
+ Row(modifier.background(Panel,RoundedCornerShape(15.dp)).clickable(onClick=onClick).padding(12.dp),verticalAlignment=Alignment.CenterVertically){Icon(icon,null,tint=tint);Spacer(Modifier.width(8.dp));Text(title,color=White,fontSize=12.sp,fontWeight=FontWeight.SemiBold);Spacer(Modifier.weight(1f));Icon(Icons.Outlined.ChevronRight,null,tint=Muted)}
 }
 @Composable private fun VideoCard(v:VideoItem,onPlay:(VideoItem)->Unit){
  Column(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(19.dp)).clickable{onPlay(v)}.padding(9.dp)){
