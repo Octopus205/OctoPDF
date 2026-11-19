@@ -3,7 +3,7 @@ name: Build OctoPipe APK
 on:
   workflow_dispatch:
   push:
-    branches: [ main, feature/octopipe-newpipe-engine ]
+    branches: [ main ]
   pull_request:
     branches: [ main ]
     paths:
