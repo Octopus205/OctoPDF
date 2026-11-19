@@ -88,6 +88,12 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
  var segments by remember{mutableStateOf<List<SponsorSegment>>(emptyList())}
  var captionMenu by remember{mutableStateOf(false)}
  fun search(){if(query.isBlank())return;scope.launch{loading=true;error=null;try{results.clear();results.addAll(VideoRepository.search(provider,query));tab=Tab.EXPLORE}catch(e:Exception){error=e.message?:"Search failed."}finally{loading=false}}}
+ fun searchDiscovery(){if(query.isBlank())return;scope.launch{loading=true;error=null;try{
+  if(discoverMode=="Channels"){channelResults.clear();channelResults.addAll(DiscoveryRepository.searchChannels(provider,query))}
+  else{playlistResults.clear();playlistResults.addAll(DiscoveryRepository.searchPlaylists(provider,query))}
+ }catch(e:Exception){error=e.message?:"Discovery failed"}finally{loading=false}}}
+ fun openPlaylist(p:PlaylistItem){scope.launch{loading=true;error=null;activePlaylist=p;try{playlistVideos.clear();playlistVideos.addAll(DiscoveryRepository.playlistVideos(p))}catch(e:Exception){error=e.message?:"Could not load playlist"}finally{loading=false}}}
+ fun downloadPlaylist(){val list=playlistVideos.toList();scope.launch{loading=true;var count=0;for(v in list){try{val info=VideoRepository.resolve(v);if(info.downloadUrl!=null){DownloadHelper.enqueue(context,info);count++}}catch(_:Exception){}};error="Queued "+count+" of "+list.size+" videos";loading=false}}
  fun play(v:VideoItem){scope.launch{error=null;tab=Tab.PLAYER;try{
   val info=VideoRepository.resolve(v);current=info;store.addHistory(v)
   history.removeAll{it.id==v.id&&it.service==v.service};history.add(0,v)
