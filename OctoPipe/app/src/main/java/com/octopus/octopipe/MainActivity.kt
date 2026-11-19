@@ -1,49 +1,23 @@
 package com.octopus.octopipe
 
+import android.app.PictureInPictureParams
+import android.content.ComponentName
+import android.os.Build
 import android.os.Bundle
+import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Bookmarks
-import androidx.compose.material.icons.outlined.Explore
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.VideoLibrary
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationRail
-import androidx.compose.material3.NavigationRailItem
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -52,333 +26,193 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.Player
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import androidx.media3.ui.PlayerView
+import coil.compose.AsyncImage
+import com.google.common.util.concurrent.ListenableFuture
+import com.octopus.octopipe.data.*
+import com.octopus.octopipe.playback.OctoPlaybackService
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
-private val AppBackground = Color(0xFF090B10)
-private val SurfaceColor = Color(0xFF141923)
-private val SurfaceElevated = Color(0xFF1B2330)
-private val Accent = Color(0xFF55A7FF)
-private val MainText = Color(0xFFF3F6FA)
-private val MutedText = Color(0xFF9AA7B8)
+private val Bg=Color(0xFF090B10)
+private val Panel=Color(0xFF141923)
+private val Raised=Color(0xFF1B2330)
+private val Blue=Color(0xFF55A7FF)
+private val White=Color(0xFFF3F6FA)
+private val Muted=Color(0xFF9AA7B8)
 
-class MainActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContent { OctoPipeApp() }
-    }
+class MainActivity:ComponentActivity(){
+ private var future:ListenableFuture<MediaController>?=null
+ private var controller by mutableStateOf<MediaController?>(null)
+ override fun onCreate(savedInstanceState:Bundle?){
+  super.onCreate(savedInstanceState)
+  val token=SessionToken(this,ComponentName(this,OctoPlaybackService::class.java))
+  val f=MediaController.Builder(this,token).buildAsync(); future=f
+  f.addListener({try{controller=f.get()}catch(_:Exception){}},ContextCompat.getMainExecutor(this))
+  setContent{OctoPipeApp(controller){openPip()}}
+ }
+ private fun openPip(){if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.O)enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16,9)).build())}
+ override fun onUserLeaveHint(){super.onUserLeaveHint();if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.O&&controller?.isPlaying==true)openPip()}
+ override fun onDestroy(){future?.let{MediaController.releaseFuture(it)};future=null;super.onDestroy()}
 }
+private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),LIBRARY("Library"),SETTINGS("Settings"),PLAYER("Player")}
 
-private enum class Destination(val label: String) {
-    Home("Home"),
-    Explore("Explore"),
-    Library("Library"),
-    Settings("Settings")
-}
-
-@Composable
-private fun OctoPipeApp() {
-    var selected by remember { mutableIntStateOf(0) }
-    var query by remember { mutableStateOf("") }
-
-    MaterialTheme {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = AppBackground,
-            contentColor = MainText
-        ) {
-            androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
-                val wideLayout = maxWidth >= 600.dp
-                Row(Modifier.fillMaxSize()) {
-                    if (wideLayout) {
-                        NavigationRail(
-                            containerColor = AppBackground,
-                            contentColor = MainText,
-                            header = {
-                                OctoMark(Modifier.padding(vertical = 20.dp))
-                            }
-                        ) {
-                            Destination.entries.forEachIndexed { index, destination ->
-                                NavigationRailItem(
-                                    selected = selected == index,
-                                    onClick = { selected = index },
-                                    icon = { DestinationIcon(index) },
-                                    label = { Text(destination.label) }
-                                )
-                            }
-                        }
-                    }
-
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxSize()
-                    ) {
-                        TopBar()
-                        Box(Modifier.weight(1f).fillMaxWidth()) {
-                            when (Destination.entries[selected]) {
-                                Destination.Home -> HomeScreen(
-                                    query = query,
-                                    onQueryChange = { query = it },
-                                    onExplore = { selected = 1 }
-                                )
-                                Destination.Explore -> ExploreScreen(
-                                    query = query,
-                                    onQueryChange = { query = it }
-                                )
-                                Destination.Library -> LibraryScreen()
-                                Destination.Settings -> SettingsScreen()
-                            }
-                        }
-
-                        if (!wideLayout) {
-                            NavigationBar(
-                                containerColor = AppBackground,
-                                contentColor = MainText,
-                                windowInsets = WindowInsets.navigationBars
-                            ) {
-                                Destination.entries.forEachIndexed { index, destination ->
-                                    NavigationBarItem(
-                                        selected = selected == index,
-                                        onClick = { selected = index },
-                                        icon = { DestinationIcon(index) },
-                                        label = { Text(destination.label, maxLines = 1) }
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+@Composable private fun OctoPipeApp(player:Player?,onPip:()->Unit){
+ val context=androidx.compose.ui.platform.LocalContext.current
+ val store=remember{LibraryStore(context)}
+ val scope=rememberCoroutineScope()
+ var tab by remember{mutableStateOf(Tab.HOME)}
+ var provider by remember{mutableStateOf(ServiceProvider.YOUTUBE)}
+ var query by remember{mutableStateOf("")}
+ var loading by remember{mutableStateOf(false)}
+ var error by remember{mutableStateOf<String?>(null)}
+ val results=remember{mutableStateListOf<VideoItem>()}
+ val favorites=remember{mutableStateListOf<VideoItem>().apply{addAll(store.favorites())}}
+ val history=remember{mutableStateListOf<VideoItem>().apply{addAll(store.history())}}
+ var current by remember{mutableStateOf<StreamInfo?>(null)}
+ var segments by remember{mutableStateOf<List<SponsorSegment>>(emptyList())}
+ var captionMenu by remember{mutableStateOf(false)}
+ fun search(){if(query.isBlank())return;scope.launch{loading=true;error=null;try{results.clear();results.addAll(VideoRepository.search(provider,query));tab=Tab.EXPLORE}catch(e:Exception){error=e.message?:"Search failed."}finally{loading=false}}}
+ fun play(v:VideoItem){scope.launch{error=null;tab=Tab.PLAYER;try{
+  val info=VideoRepository.resolve(v);current=info;store.addHistory(v)
+  history.removeAll{it.id==v.id&&it.service==v.service};history.add(0,v)
+  segments=if(v.service==ServiceProvider.YOUTUBE.name)SponsorBlockRepository.segments(v.id)else emptyList()
+  val subtitles=info.captions.map{c->MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(c.url)).setMimeType(MimeTypes.TEXT_VTT).setLanguage(c.languageCode).build()}
+  val item=MediaItem.Builder().setUri(info.streamUrl).setMediaMetadata(MediaMetadata.Builder().setTitle(v.title).setArtist(v.author).build()).setSubtitleConfigurations(subtitles).build()
+  player?.setMediaItem(item);player?.prepare();player?.play()
+ }catch(e:Exception){error=e.message?:"Unable to play this video."}}}
+ LaunchedEffect(player,segments,current){val p=player?:return@LaunchedEffect;val skipped=mutableSetOf<Int>();while(true){if(p.isPlaying){val pos=p.currentPosition/1000.0;segments.forEachIndexed{i,s->if(pos>=s.startSeconds&&pos<s.endSeconds&&skipped.add(i))p.seekTo((s.endSeconds*1000).toLong())};if(pos<2)skipped.clear()};delay(450)}}
+ MaterialTheme{
+  Surface(Modifier.fillMaxSize(),color=Bg,contentColor=White){
+   BoxWithConstraints(Modifier.fillMaxSize()){
+    val wide=maxWidth>=600.dp
+    Row(Modifier.fillMaxSize()){
+     if(wide)NavigationRail(containerColor=Bg,header={AppMark(Modifier.padding(vertical=18.dp))}){
+      Tab.entries.take(4).forEach{t->NavigationRailItem(selected=tab==t,onClick={tab=t},icon={TabIcon(t)},label={Text(t.label)})}
+     }
+     Column(Modifier.weight(1f).fillMaxSize()){
+      Header()
+      Box(Modifier.weight(1f).fillMaxWidth()){
+       when(tab){
+        Tab.HOME->SearchPage(query,{query=it},provider,{provider=it},{search()},results,loading,error,::play,true)
+        Tab.EXPLORE->SearchPage(query,{query=it},provider,{provider=it},{search()},results,loading,error,::play,false)
+        Tab.LIBRARY->LibraryPage(favorites,history,::play)
+        Tab.SETTINGS->SettingsPage(provider,{provider=it})
+        Tab.PLAYER->PlayerPage(player,current,segments,error,{captionMenu=it},captionMenu,{current?.let{DownloadHelper.enqueue(context,it)}},onPip){v->
+         val added=store.toggle(v);favorites.removeAll{it.id==v.id&&it.service==v.service};if(added)favorites.add(0,v)
         }
+       }
+      }
+      if(!wide)NavigationBar(containerColor=Bg){
+       Tab.entries.take(4).forEach{t->NavigationBarItem(selected=tab==t,onClick={tab=t},icon={TabIcon(t)},label={Text(t.label)})}
+       if(current!=null)NavigationBarItem(selected=tab==Tab.PLAYER,onClick={tab=Tab.PLAYER},icon={Icon(Icons.Outlined.PlayArrow,null)},label={Text("Player")})
+      }
+     }
     }
+   }
+  }
+ }
 }
+@Composable private fun Header(){
+ Row(Modifier.fillMaxWidth().padding(horizontal=20.dp,vertical=13.dp),verticalAlignment=Alignment.CenterVertically){
+  AppMark();Spacer(Modifier.width(10.dp));Column{Text("OctoPipe",fontSize=21.sp,fontWeight=FontWeight.Bold,color=White);Text("Your video space",fontSize=11.sp,color=Muted)}
+  Spacer(Modifier.weight(1f));Text("0.2.0",fontSize=11.sp,color=Muted)
+ }
+}
+@Composable private fun AppMark(modifier:Modifier=Modifier){AsyncImage(model=com.octopus.octopipe.R.drawable.octopipe_icon,contentDescription="OctoPipe octopus icon",modifier=modifier.size(40.dp))}
+@Composable private fun TabIcon(tab:Tab){val icon=when(tab){Tab.HOME->Icons.Outlined.Home;Tab.EXPLORE->Icons.Outlined.Explore;Tab.LIBRARY->Icons.Outlined.Bookmarks;else->Icons.Outlined.Settings};Icon(icon,contentDescription=tab.label)}
 
-@Composable
-private fun TopBar() {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 16.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        OctoMark()
-        Spacer(Modifier.width(11.dp))
-        Column {
-            Text("OctoPipe", fontSize = 21.sp, fontWeight = FontWeight.Bold, color = MainText)
-            Text("Your video space", fontSize = 11.sp, color = MutedText)
-        }
-        Spacer(Modifier.weight(1f))
-        Box(
-            modifier = Modifier
-                .size(38.dp)
-                .background(SurfaceColor, CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(Icons.Outlined.VideoLibrary, contentDescription = "Video library", tint = Accent)
-        }
+@Composable private fun SearchPage(query:String,onQuery:(String)->Unit,provider:ServiceProvider,onProvider:(ServiceProvider)->Unit,onSearch:()->Unit,results:List<VideoItem>,loading:Boolean,error:String?,onPlay:(VideoItem)->Unit,home:Boolean){
+ LazyColumn(Modifier.fillMaxSize().padding(horizontal=18.dp),verticalArrangement=Arrangement.spacedBy(13.dp),contentPadding=PaddingValues(top=8.dp,bottom=24.dp)){
+  item{Text(if(home)"Discover" else "Explore",fontSize=28.sp,fontWeight=FontWeight.Bold,color=White);Text("Search public video services.",color=Muted,fontSize=13.sp)}
+  item{
+   Column(verticalArrangement=Arrangement.spacedBy(9.dp)){
+    Row(Modifier.fillMaxWidth().background(Raised,RoundedCornerShape(15.dp)).padding(horizontal=13.dp,vertical=14.dp),verticalAlignment=Alignment.CenterVertically){
+     Icon(Icons.Outlined.Search,null,tint=Muted);Spacer(Modifier.width(9.dp))
+     BasicTextField(value=query,onValueChange=onQuery,modifier=Modifier.weight(1f),singleLine=true,cursorBrush=SolidColor(Blue),textStyle=MaterialTheme.typography.bodyLarge.copy(color=White),decorationBox={inner->if(query.isEmpty())Text("Search videos or channels",color=Muted,fontSize=14.sp);inner()})
     }
-}
-
-@Composable
-private fun OctoMark(modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .size(38.dp)
-            .background(Accent.copy(alpha = 0.14f), RoundedCornerShape(13.dp)),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            imageVector = Icons.Outlined.VideoLibrary,
-            contentDescription = "OctoPipe",
-            tint = Accent,
-            modifier = Modifier.size(22.dp)
-        )
+    Row(horizontalArrangement=Arrangement.spacedBy(7.dp)){
+     ServiceProvider.entries.forEach{p->FilterChip(selected=provider==p,onClick={onProvider(p)},label={Text(p.title)})}
+     Button(onClick=onSearch,enabled=query.isNotBlank()){Icon(Icons.Outlined.Search,null);Text("Search")}
     }
+   }
+  }
+  if(home)item{Text("YouTube via public Invidious instances · PeerTube via public API",color=Muted,fontSize=12.sp,lineHeight=18.sp)}
+  if(loading)item{Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.Center,verticalAlignment=Alignment.CenterVertically){CircularProgressIndicator(modifier=Modifier.size(20.dp),color=Blue,strokeWidth=2.dp);Spacer(Modifier.width(8.dp));Text("Searching…",color=Muted)}}
+  if(error!=null)item{ErrorLabel(error)}
+  items(results,key={it.service+it.id}){VideoCard(it,onPlay)}
+ }
 }
-
-@Composable
-private fun DestinationIcon(index: Int) {
-    val icon = when (index) {
-        0 -> Icons.Outlined.Home
-        1 -> Icons.Outlined.Explore
-        2 -> Icons.Outlined.Bookmarks
-        else -> Icons.Outlined.Settings
+@Composable private fun VideoCard(v:VideoItem,onPlay:(VideoItem)->Unit){
+ Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(15.dp)).clickable{onPlay(v)}.padding(9.dp),verticalAlignment=Alignment.CenterVertically){
+  AsyncImage(model=v.thumbnail.ifBlank{null},contentDescription=null,modifier=Modifier.width(124.dp).height(76.dp).background(Raised,RoundedCornerShape(9.dp)))
+  Spacer(Modifier.width(11.dp));Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)){
+   Text(v.title,color=White,fontWeight=FontWeight.SemiBold,fontSize=13.sp,maxLines=2,overflow=TextOverflow.Ellipsis)
+   Text(v.author,color=Muted,fontSize=11.sp,maxLines=1);Text(v.service.lowercase()+" · "+duration(v.durationSeconds),color=Blue,fontSize=10.sp)
+  }
+ }
+}
+@Composable private fun LibraryPage(favorites:List<VideoItem>,history:List<VideoItem>,onPlay:(VideoItem)->Unit){
+ LazyColumn(Modifier.fillMaxSize().padding(horizontal=18.dp),verticalArrangement=Arrangement.spacedBy(11.dp),contentPadding=PaddingValues(top=8.dp,bottom=24.dp)){
+  item{Text("Library",fontSize=28.sp,fontWeight=FontWeight.Bold,color=White)}
+  item{Heading("Saved videos","Your local favorites")};if(favorites.isEmpty())item{EmptyCard("Save videos from the player to find them here.")}
+  items(favorites,key={"f"+it.service+it.id}){VideoCard(it,onPlay)}
+  item{Heading("Watch history","Recently played")};if(history.isEmpty())item{EmptyCard("Videos you play will appear here.")}
+  items(history,key={"h"+it.service+it.id}){VideoCard(it,onPlay)}
+ }
+}
+@Composable private fun SettingsPage(provider:ServiceProvider,onProvider:(ServiceProvider)->Unit){
+ Column(Modifier.fillMaxSize().padding(20.dp),verticalArrangement=Arrangement.spacedBy(13.dp)){
+  Text("Settings",fontSize=28.sp,fontWeight=FontWeight.Bold,color=White);Heading("Default service","Choose where new searches are sent")
+  ServiceProvider.entries.forEach{p->Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(14.dp)).clickable{onProvider(p)}.padding(16.dp),verticalAlignment=Alignment.CenterVertically){
+   Column(Modifier.weight(1f)){Text(p.title,color=White,fontWeight=FontWeight.SemiBold);Text(if(p==ServiceProvider.YOUTUBE)"Invidious public API instances" else "PeerTube public API",color=Muted,fontSize=12.sp)}
+   Text(if(provider==p)"Selected" else "Select",color=Blue,fontSize=12.sp)
+  }}
+  InfoCard("Playback","Media3 · Background audio · Picture-in-Picture")
+  InfoCard("Smart skipping","SponsorBlock read-only segment lookup")
+  InfoCard("Downloads","Android Download Manager · App-specific storage")
+  Text("OctoPipe 0.2.0 · Development build",color=Muted,fontSize=12.sp)
+ }
+}
+@Composable private fun PlayerPage(player:Player?,info:StreamInfo?,segments:List<SponsorSegment>,error:String?,onCaptionMenu:(Boolean)->Unit,captionMenu:Boolean,onDownload:()->Unit,onPip:()->Unit,onFavorite:(VideoItem)->Unit){
+ Column(Modifier.fillMaxSize().padding(15.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
+  Text("Now playing",fontSize=25.sp,fontWeight=FontWeight.Bold,color=White)
+  if(player!=null&&info!=null){
+   AndroidView(factory={ctx->PlayerView(ctx).apply{this.player=player;useController=true;setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)},update={it.player=player},modifier=Modifier.fillMaxWidth().height(220.dp).background(Color.Black,RoundedCornerShape(12.dp)))
+   Text(info.video.title,color=White,fontSize=16.sp,fontWeight=FontWeight.SemiBold,maxLines=2,overflow=TextOverflow.Ellipsis);Text(info.video.author,color=Muted,fontSize=12.sp)
+   Row(horizontalArrangement=Arrangement.spacedBy(5.dp)){
+    OutlinedButton(onClick=onDownload){Icon(Icons.Outlined.Download,null);Text("Download")}
+    OutlinedButton(onClick=onPip){Icon(Icons.Outlined.PictureInPictureAlt,null);Text("PiP")}
+    OutlinedButton(onClick={onFavorite(info.video)}){Icon(Icons.Outlined.BookmarkAdd,null);Text("Save")}
+   }
+   if(info.captions.isNotEmpty())Box{
+    OutlinedButton(onClick={onCaptionMenu(true)}){Text("Subtitles")}
+    DropdownMenu(expanded=captionMenu,onDismissRequest={onCaptionMenu(false)}){
+     info.captions.forEach{c->DropdownMenuItem(text={Text(c.label)},onClick={player.trackSelectionParameters.let{_->{
+      player.trackSelectionParameters=player.trackSelectionParameters.buildUpon().setPreferredTextLanguage(c.languageCode).setTrackTypeDisabled(C.TRACK_TYPE_TEXT,false).build();onCaptionMenu(false)
+     }})}
+     DropdownMenuItem(text={Text("Turn subtitles off")},onClick={player.trackSelectionParameters.let{_->{
+      player.trackSelectionParameters=player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT,true).build();onCaptionMenu(false)
+     }})}
     }
-    Icon(icon, contentDescription = Destination.entries[index].label)
+   }
+   if(segments.isNotEmpty())Text("SponsorBlock active · "+segments.size+" segments",color=Blue,fontSize=12.sp)
+   Text("Background audio is managed by the media session service.",color=Muted,fontSize=11.sp)
+  }else EmptyCard("Select a video from Search or Explore to start playback.")
+  if(error!=null)ErrorLabel(error)
+ }
 }
-
-@Composable
-private fun HomeScreen(
-    query: String,
-    onQueryChange: (String) -> Unit,
-    onExplore: () -> Unit
-) {
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 8.dp, bottom = 24.dp)
-    ) {
-        item {
-            Text("Discover", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = MainText)
-            Text("Find something worth watching.", color = MutedText, fontSize = 14.sp)
-        }
-        item {
-            SearchField(query, onQueryChange, onExplore)
-        }
-        item {
-            SectionHeading("Start exploring", "Search videos and channels")
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .background(SurfaceColor, RoundedCornerShape(20.dp))
-                    .clickable(onClick = onExplore)
-                    .padding(20.dp)
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Icon(Icons.Outlined.Search, contentDescription = null, tint = Accent, modifier = Modifier.size(30.dp))
-                    Text("Search across supported services", color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
-                    Text(
-                        "Connectors are being built. Search results will appear here when a provider is enabled.",
-                        color = MutedText,
-                        fontSize = 13.sp,
-                        lineHeight = 19.sp
-                    )
-                }
-            }
-        }
-        item {
-            SectionHeading("Your space", "Saved locally on this device")
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                InfoTile("Subscriptions", "Follow channels", Modifier.weight(1f))
-                InfoTile("Downloads", "Coming next", Modifier.weight(1f))
-            }
-        }
-        item {
-            Text(
-                "OctoPipe is an independent project. No account is required for this preview.",
-                color = MutedText,
-                fontSize = 12.sp,
-                lineHeight = 18.sp
-            )
-        }
-    }
-}
-
-@Composable
-private fun ExploreScreen(query: String, onQueryChange: (String) -> Unit) {
-    Column(
-        Modifier
-            .fillMaxSize()
-            .padding(horizontal = 20.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
-    ) {
-        Text("Explore", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = MainText)
-        SearchField(query, onQueryChange) {}
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .background(SurfaceColor, RoundedCornerShape(18.dp))
-                .padding(20.dp)
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Outlined.Explore, contentDescription = null, tint = Accent, modifier = Modifier.size(28.dp))
-                Text("Provider integration is the next milestone", color = MainText, fontWeight = FontWeight.SemiBold)
-                Text(
-                    "The app shell is ready. Video search will be enabled after the first service connector is implemented and tested.",
-                    color = MutedText,
-                    fontSize = 13.sp,
-                    lineHeight = 19.sp
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun LibraryScreen() {
-    Column(
-        Modifier
-            .fillMaxSize()
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        Text("Library", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = MainText)
-        InfoTile("Subscriptions", "Your followed channels will live here", Modifier.fillMaxWidth())
-        InfoTile("Downloads", "Offline video and audio", Modifier.fillMaxWidth())
-        InfoTile("History", "Recently watched videos", Modifier.fillMaxWidth())
-        InfoTile("Playlists", "Your personal collections", Modifier.fillMaxWidth())
-    }
-}
-
-@Composable
-private fun SettingsScreen() {
-    Column(
-        Modifier
-            .fillMaxSize()
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        Text("Settings", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = MainText)
-        InfoTile("Appearance", "Dark Minimal · Always dark", Modifier.fillMaxWidth())
-        InfoTile("Playback", "Quality, captions and playback behavior", Modifier.fillMaxWidth())
-        InfoTile("Downloads", "Storage location and download preferences", Modifier.fillMaxWidth())
-        InfoTile("Services", "Manage supported video providers", Modifier.fillMaxWidth())
-        Text("OctoPipe 0.1.0 · Early development preview", color = MutedText, fontSize = 12.sp)
-    }
-}
-
-@Composable
-private fun SearchField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    onSubmit: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(SurfaceElevated, RoundedCornerShape(16.dp))
-            .clickable(onClick = onSubmit)
-            .padding(horizontal = 15.dp, vertical = 15.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(Icons.Outlined.Search, contentDescription = null, tint = MutedText)
-        Spacer(Modifier.width(10.dp))
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            modifier = Modifier.weight(1f),
-            singleLine = true,
-            cursorBrush = SolidColor(Accent),
-            textStyle = MaterialTheme.typography.bodyLarge.copy(color = MainText),
-            decorationBox = { inner ->
-                if (value.isEmpty()) {
-                    Text("Search videos or channels", color = MutedText, fontSize = 14.sp)
-                }
-                inner()
-            }
-        )
-    }
-}
-
-@Composable
-private fun SectionHeading(title: String, subtitle: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Text(title, color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
-        Text(subtitle, color = MutedText, fontSize = 12.sp)
-    }
-}
-
-@Composable
-private fun InfoTile(title: String, subtitle: String, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .background(SurfaceColor, RoundedCornerShape(16.dp))
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(5.dp)
-    ) {
-        Text(title, color = MainText, fontWeight = FontWeight.SemiBold)
-        Text(subtitle, color = MutedText, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-    }
-}
-
+@Composable private fun Heading(title:String,subtitle:String){Column(verticalArrangement=Arrangement.spacedBy(3.dp)){Text(title,color=White,fontWeight=FontWeight.SemiBold,fontSize=17.sp);Text(subtitle,color=Muted,fontSize=12.sp)}}
+@Composable private fun InfoCard(title:String,subtitle:String){Column(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(14.dp)).padding(15.dp),verticalArrangement=Arrangement.spacedBy(4.dp)){Text(title,color=White,fontWeight=FontWeight.SemiBold);Text(subtitle,color=Muted,fontSize=12.sp)}}
+@Composable private fun EmptyCard(text:String){Box(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(14.dp)).padding(17.dp)){Text(text,color=Muted,fontSize=13.sp,lineHeight=18.sp)}}
+@Composable private fun ErrorLabel(text:String){Text(text,color=Color(0xFFFF9292),fontSize=12.sp,lineHeight=18.sp)}
+private fun duration(s:Long):String{if(s<=0)return "Live / unknown";val h=s/3600;val m=(s%3600)/60;val r=s%60;return if(h>0)"%d:%02d:%02d".format(h,m,r) else "%d:%02d".format(m,r)}

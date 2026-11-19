@@ -3,7 +3,7 @@ name: Build OctoPipe APK
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [ main, feature/octopipe-phase2 ]
     paths:
       - 'OctoPipe/**'
       - '.github/workflows/build-octopipe.yml'
