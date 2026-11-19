@@ -112,6 +112,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
  var discoverMode by remember{mutableStateOf("Channels")}
  var activePlaylist by remember{mutableStateOf<PlaylistItem?>(null)}
  var activeChannel by remember{mutableStateOf<ChannelItem?>(null)}
+ var channelReturnTab by remember{mutableStateOf(Tab.DISCOVER)}
  val channelVideos=remember{mutableStateListOf<VideoItem>()}
  var current by remember{mutableStateOf<StreamInfo?>(null)}
  var segments by remember{mutableStateOf<List<SponsorSegment>>(emptyList())}
@@ -127,7 +128,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
   else{playlistResults.clear();playlistResults.addAll(DiscoveryRepository.searchPlaylists(provider,query))}
  }catch(e:Exception){error=e.message?:"Discovery failed"}finally{loading=false}}}
  fun openPlaylist(p:PlaylistItem){if(p.id.isBlank()){activePlaylist=null;playlistVideos.clear();return};scope.launch{loading=true;error=null;activePlaylist=p;try{playlistVideos.clear();playlistVideos.addAll(DiscoveryRepository.playlistVideos(p))}catch(e:Exception){error=e.message?:"Could not load playlist"}finally{loading=false}}}
- fun openChannel(ch:ChannelItem){activeChannel=ch;tab=Tab.CHANNEL;scope.launch{loading=true;error=null;try{channelVideos.clear();channelVideos.addAll(DiscoveryRepository.channelVideos(ch))}catch(e:Exception){error=e.message?:"Could not load channel"}finally{loading=false}}}
+ fun openChannel(ch:ChannelItem){channelReturnTab=tab;activeChannel=ch;tab=Tab.CHANNEL;scope.launch{loading=true;error=null;try{channelVideos.clear();channelVideos.addAll(DiscoveryRepository.channelVideos(ch))}catch(e:Exception){error=e.message?:"Could not load channel"}finally{loading=false}}}
  fun downloadPlaylist(){val list=playlistVideos.toList();scope.launch{loading=true;var count=0;for(v in list){try{val info=VideoRepository.resolve(v);if(info.downloadUrl!=null){DownloadHelper.enqueue(context,info);count++}}catch(_:Exception){}};error="Queued "+count+" of "+list.size+" videos";loading=false}}
  fun openVideoChannel(v:VideoItem){val id=v.channelId?:return;val url=v.channelUrl?:if(v.service==ServiceProvider.YOUTUBE.name)"https://www.youtube.com/channel/$id" else "https://peertube.tv/video-channels/$id";openChannel(ChannelItem(id,v.author,"",v.service,url))}
  fun play(v:VideoItem){scope.launch{loading=true;error=null;tab=Tab.PLAYER;try{
@@ -141,12 +142,12 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
  }catch(e:Exception){error=e.message?:"Unable to play this video."}finally{loading=false}}}
  LaunchedEffect(player,segments,current){val p=player?:return@LaunchedEffect;val skipped=mutableSetOf<Int>();while(true){if(p.isPlaying){val pos=p.currentPosition/1000.0;segments.forEachIndexed{i,s->if(pos>=s.startSeconds&&pos<s.endSeconds&&skipped.add(i))p.seekTo((s.endSeconds*1000).toLong())};if(pos<2)skipped.clear()};delay(450)}}
  MaterialTheme{
-  ModalNavigationDrawer(drawerState=drawerState,drawerContent={ModalDrawerSheet(drawerContainerColor=Panel){SettingsDrawer(provider,::changeProvider,darkMode,{darkMode=it;prefs.edit().putBoolean("dark_mode",it).apply()},{scope.launch{drawerState.close()}},{folderPicker.launch(null)})}}){
+  ModalNavigationDrawer(drawerState=drawerState,drawerContent={ModalDrawerSheet(drawerContainerColor=Panel){SettingsDrawer(provider,::changeProvider,darkMode,{darkMode=it;prefs.edit().putBoolean("dark_mode",it).apply()},{scope.launch{drawerState.close()}},{folderPicker.launch(null)},{prefs.edit().remove("download_tree_uri").apply()})}}){
   Surface(Modifier.fillMaxSize(),color=Bg,contentColor=White){
    BoxWithConstraints(Modifier.fillMaxSize()){
     val wide=maxWidth>=600.dp
     Row(Modifier.fillMaxSize()){
-     if(wide)NavigationRail(containerColor=Bg,header={AppMark(Modifier.padding(vertical=18.dp))}){
+     if(wide&&!playerFullscreen)NavigationRail(containerColor=Bg,header={AppMark(Modifier.padding(vertical=18.dp))}){
       Tab.entries.filter{it!=Tab.PLAYER&&it!=Tab.CHANNEL}.forEach{t->NavigationRailItem(selected=tab==t,onClick={tab=t},icon={TabIcon(t)},label={Text(t.label)})}
      }
      Column(Modifier.weight(1f).fillMaxSize()){
@@ -163,7 +164,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
         },::openChannel)
         Tab.CHANNEL->ChannelPage(activeChannel,channelVideos,subscriptions.any{it.id==activeChannel?.id&&it.service==activeChannel?.service},loading,error,{ch->
          val added=store.toggleSubscription(ch);subscriptions.removeAll{it.id==ch.id&&it.service==ch.service};if(added)subscriptions.add(0,ch)
-        },::play){tab=Tab.DISCOVER}
+        },::play){tab=channelReturnTab}
         Tab.LIBRARY->LibraryPage(favorites,history,::play)
         Tab.SETTINGS->SettingsPage(provider,{provider=it})
         Tab.PLAYER->PlayerPage(player,current,segments,loading,error,{captionMenu=it},captionMenu,{current?.let{DownloadHelper.enqueue(context,it)}},{current?.let{DownloadHelper.enqueueAudio(context,it)}},onPip,qualityMenu,{qualityMenu=it},{label->
@@ -190,7 +191,8 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
  }
  }
 }
-@Composable private fun SettingsDrawer(provider:ServiceProvider,onProvider:(ServiceProvider)->Unit,dark:Boolean,onTheme:(Boolean)->Unit,onClose:()->Unit,onFolder:()->Unit){
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable private fun SettingsDrawer(provider:ServiceProvider,onProvider:(ServiceProvider)->Unit,dark:Boolean,onTheme:(Boolean)->Unit,onClose:()->Unit,onFolder:()->Unit,onClearFolder:()->Unit){
  LazyColumn(Modifier.fillMaxHeight().widthIn(min=280.dp,max=340.dp).padding(horizontal=16.dp),contentPadding=PaddingValues(top=28.dp,bottom=24.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
   item{Row(verticalAlignment=Alignment.CenterVertically){AppMark(Modifier.size(42.dp));Spacer(Modifier.width(10.dp));Column{Text("OctoPipe",fontSize=22.sp,fontWeight=FontWeight.ExtraBold,color=White);Text("Control center",fontSize=11.sp,color=Muted)};Spacer(Modifier.weight(1f));IconButton(onClick=onClose){Icon(Icons.Outlined.Close,null,tint=Muted)}}}
   item{HorizontalDivider(color=Raised)}
@@ -207,6 +209,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
   item{HorizontalDivider(color=Raised)}
   item{Text("DOWNLOADS",fontSize=10.sp,color=Blue,fontWeight=FontWeight.Bold,letterSpacing=1.5.sp)}
   item{NavigationDrawerItem(label={Text("Choose download folder")},selected=false,onClick=onFolder,icon={Icon(Icons.Outlined.FolderOpen,null)})}
+  item{TextButton(onClick=onClearFolder){Text("Use default app folder")}}
   item{Text("Selected: "+if(androidx.compose.ui.platform.LocalContext.current.getSharedPreferences("octopipe_settings",android.content.Context.MODE_PRIVATE).getString("download_tree_uri",null)!=null)"Custom folder" else "App Downloads",fontSize=11.sp,color=Muted)}
   item{HorizontalDivider(color=Raised)}
   item{Text("PLAYBACK",fontSize=10.sp,color=Blue,fontWeight=FontWeight.Bold,letterSpacing=1.5.sp)}
