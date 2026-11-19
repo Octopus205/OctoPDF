@@ -16,7 +16,7 @@ private interface VideoEngine {
     fun resolve(video:VideoItem):StreamInfo
 }
 private object ProviderHttp {
-    val client=OkHttpClient.Builder().connectTimeout(8,TimeUnit.SECONDS).readTimeout(14,TimeUnit.SECONDS).callTimeout(18,TimeUnit.SECONDS).build()
+    val client=OkHttpClient.Builder().connectTimeout(4,TimeUnit.SECONDS).readTimeout(8,TimeUnit.SECONDS).callTimeout(10,TimeUnit.SECONDS).build()
     fun get(url:String):String {
         val request=Request.Builder().url(url).header("User-Agent","OctoPipe/0.3.0 Android").header("Accept","application/json").build()
         client.newCall(request).execute().use { r -> if(!r.isSuccessful) error("Provider HTTP ${r.code}"); return r.body?.string()?:error("Empty provider response") }
@@ -26,24 +26,14 @@ private object ProviderHttp {
 }
 private object YouTubeEngine:VideoEngine {
     override fun supports(service:String)=service==ServiceProvider.YOUTUBE.name
-    private val fallback=listOf("https://inv.nadeko.net","https://invidious.nerdvpn.de","https://invidious.privacyredirect.com","https://inv.tux.pizza")
-    @Volatile private var hosts:List<String> = emptyList()
-    private fun hosts():List<String>{
-        if(hosts.isNotEmpty()) return hosts
-        val found=runCatching {
-            val a=ProviderHttp.array("https://api.invidious.io/instances.json?sort_by=health")
-            buildList { for(i in 0 until a.length()){val row=a.optJSONArray(i)?:continue;val host=row.optString(0).removePrefix("https://").trimEnd('/');val meta=row.optJSONObject(1)?:continue;if(meta.optBoolean("api",false)&&host.contains(".")){add("https://$host")};if(size>=8)break} }
-        }.getOrDefault(emptyList())
-        hosts=(found+fallback).distinct().take(10);return hosts
-    }
+    private val fallback=listOf("https://inv.nadeko.net","https://inv.tux.pizza","https://invidious.nerdvpn.de","https://invidious.privacyredirect.com")
+    @Volatile private var lastGoodHost:String?=null
     private fun <T> retry(block:(String)->T):T {
         val errors=mutableListOf<String>()
-        val ordered=hosts().sortedByDescending{it==lastGoodHost}
+        val ordered=(listOfNotNull(lastGoodHost)+fallback).distinct().take(3)
         for(host in ordered){try{val result=block(host);lastGoodHost=host;return result}catch(e:Exception){errors.add("${host.removePrefix("https://")}: ${e.message?: "failed"}")}}
-        hosts=emptyList()
-        error("YouTube public search providers are unavailable. Please retry. "+errors.take(2).joinToString(" | "))
+        error("Video service is taking too long or unavailable. Please retry. "+errors.take(2).joinToString(" | "))
     }
-    @Volatile private var lastGoodHost:String?=null
     override fun search(query:String):List<VideoItem> = retry { host ->
         val url=Uri.parse("$host/api/v1/search").buildUpon().appendQueryParameter("q",query).appendQueryParameter("type","video").build().toString()
         val a=ProviderHttp.array(url);val out=mutableListOf<VideoItem>()
@@ -112,7 +102,19 @@ private object PeerTubeEngine:VideoEngine {
 }
 object VideoRepository {
     private val engines=listOf(YouTubeEngine,PeerTubeEngine)
+    private data class Cached<T>(val value:T,val savedAt:Long)
+    private val streamCache=java.util.concurrent.ConcurrentHashMap<String,Cached<StreamInfo>>()
+    private val searchCache=java.util.concurrent.ConcurrentHashMap<String,Cached<List<VideoItem>>>()
     private fun engine(service:String)=engines.firstOrNull{it.supports(service)}?:error("Unsupported video service: $service")
-    suspend fun search(provider:ServiceProvider,q:String):List<VideoItem> = withContext(Dispatchers.IO){require(q.isNotBlank()){"Enter a video title, channel, or keyword."};engine(provider.name).search(q.trim())}
-    suspend fun resolve(v:VideoItem):StreamInfo = withContext(Dispatchers.IO){engine(v.service).resolve(v)}
+    suspend fun search(provider:ServiceProvider,q:String):List<VideoItem> = withContext(Dispatchers.IO){
+        require(q.isNotBlank()){"Enter a video title, channel, or keyword."}
+        val key=provider.name+":"+q.trim().lowercase()
+        searchCache[key]?.takeIf{System.currentTimeMillis()-it.savedAt<90_000}?.let{return@withContext it.value}
+        engine(provider.name).search(q.trim()).also{searchCache[key]=Cached(it,System.currentTimeMillis())}
+    }
+    suspend fun resolve(v:VideoItem):StreamInfo = withContext(Dispatchers.IO){
+        val key=v.service+":"+v.id
+        streamCache[key]?.takeIf{System.currentTimeMillis()-it.savedAt<180_000}?.let{return@withContext it.value}
+        engine(v.service).resolve(v).also{streamCache[key]=Cached(it,System.currentTimeMillis())}
+    }
 }
