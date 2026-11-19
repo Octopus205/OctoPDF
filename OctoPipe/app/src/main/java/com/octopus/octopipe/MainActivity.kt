@@ -138,6 +138,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
  }catch(e:Exception){error=e.message?:"Unable to play this video."}}}
  LaunchedEffect(player,segments,current){val p=player?:return@LaunchedEffect;val skipped=mutableSetOf<Int>();while(true){if(p.isPlaying){val pos=p.currentPosition/1000.0;segments.forEachIndexed{i,s->if(pos>=s.startSeconds&&pos<s.endSeconds&&skipped.add(i))p.seekTo((s.endSeconds*1000).toLong())};if(pos<2)skipped.clear()};delay(450)}}
  MaterialTheme{
+  ModalNavigationDrawer(drawerState=drawerState,drawerContent={ModalDrawerSheet(drawerContainerColor=Panel){SettingsDrawer(provider,{provider=it},darkMode,{darkMode=it;prefs.edit().putBoolean("dark_mode",it).apply()},{scope.launch{drawerState.close()}},{folderPicker.launch(null)})}}){
   Surface(Modifier.fillMaxSize(),color=Bg,contentColor=White){
    BoxWithConstraints(Modifier.fillMaxSize()){
     val wide=maxWidth>=600.dp
@@ -183,6 +184,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
     }
    }
   }
+ }
  }
 }
 @Composable private fun SettingsDrawer(provider:ServiceProvider,onProvider:(ServiceProvider)->Unit,dark:Boolean,onTheme:(Boolean)->Unit,onClose:()->Unit,onFolder:()->Unit){
@@ -348,7 +350,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
       info.captions.forEach{caption->DropdownMenuItem(text={Text(caption.label)},onClick={
        player.trackSelectionParameters=player.trackSelectionParameters.buildUpon().setPreferredTextLanguage(caption.languageCode).setTrackTypeDisabled(C.TRACK_TYPE_TEXT,false).build();onCaptionMenu(false)
       })}
-      DropdownMenuItem(text={Text("Turn subtitles off")},onClick={player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT,true).let{params->{player.trackSelectionParameters=params;onCaptionMenu(false)}}})
+      DropdownMenuItem(text={Text("Turn subtitles off")},onClick={player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT,true).build().let{params->{player.trackSelectionParameters=params;onCaptionMenu(false)}}})
      }
     }
     if(info.downloadUrl==null)Text("Offline video download unavailable for this stream format.",color=Muted,fontSize=11.sp)
