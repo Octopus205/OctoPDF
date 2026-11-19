@@ -187,7 +187,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),LIBRARY
  Column(Modifier.fillMaxSize().padding(15.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
   Text("Now playing",fontSize=25.sp,fontWeight=FontWeight.Bold,color=White)
   if(player!=null&&info!=null){
-   AndroidView(factory={ctx->PlayerView(ctx).apply{this.player=player;useController=true;setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)},update={it.player=player},modifier=Modifier.fillMaxWidth().height(220.dp).background(Color.Black,RoundedCornerShape(12.dp)))
+   AndroidView(factory={ctx->PlayerView(ctx).apply{this.player=player;useController=true;setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)}},update={it.player=player},modifier=Modifier.fillMaxWidth().height(220.dp).background(Color.Black,RoundedCornerShape(12.dp)))
    Text(info.video.title,color=White,fontSize=16.sp,fontWeight=FontWeight.SemiBold,maxLines=2,overflow=TextOverflow.Ellipsis);Text(info.video.author,color=Muted,fontSize=12.sp)
    Row(horizontalArrangement=Arrangement.spacedBy(5.dp)){
     OutlinedButton(onClick=onDownload){Icon(Icons.Outlined.Download,null);Text("Download")}
