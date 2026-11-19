@@ -6,7 +6,7 @@ plugins {
 android {
  namespace="com.octopus.octopipe"
  compileSdk=36
- defaultConfig { applicationId="com.octopus.octopipe"; minSdk=26; targetSdk=35; versionCode=3; versionName="0.3.0"; vectorDrawables { useSupportLibrary=true } }
+ defaultConfig { applicationId="com.octopus.octopipe"; minSdk=26; targetSdk=35; versionCode=4; versionName="0.4.0"; vectorDrawables { useSupportLibrary=true } }
  buildTypes { debug { applicationIdSuffix=".debug" }; release { isMinifyEnabled=false } }
  compileOptions { sourceCompatibility=JavaVersion.VERSION_17; targetCompatibility=JavaVersion.VERSION_17 }
  buildFeatures { compose=true }
