@@ -78,6 +78,12 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
  val results=remember{mutableStateListOf<VideoItem>()}
  val favorites=remember{mutableStateListOf<VideoItem>().apply{addAll(store.favorites())}}
  val history=remember{mutableStateListOf<VideoItem>().apply{addAll(store.history())}}
+ val subscriptions=remember{mutableStateListOf<ChannelItem>().apply{addAll(store.subscriptions())}}
+ val channelResults=remember{mutableStateListOf<ChannelItem>()}
+ val playlistResults=remember{mutableStateListOf<PlaylistItem>()}
+ val playlistVideos=remember{mutableStateListOf<VideoItem>()}
+ var discoverMode by remember{mutableStateOf("Channels")}
+ var activePlaylist by remember{mutableStateOf<PlaylistItem?>(null)}
  var current by remember{mutableStateOf<StreamInfo?>(null)}
  var segments by remember{mutableStateOf<List<SponsorSegment>>(emptyList())}
  var captionMenu by remember{mutableStateOf(false)}
