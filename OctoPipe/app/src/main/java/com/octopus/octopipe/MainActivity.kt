@@ -69,7 +69,7 @@ class MainActivity:ComponentActivity(){
  override fun onUserLeaveHint(){super.onUserLeaveHint();if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.O&&controller?.isPlaying==true)openPip()}
  override fun onDestroy(){future?.let{MediaController.releaseFuture(it)};future=null;super.onDestroy()}
 }
-private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVER("Discover"),SUBSCRIPTIONS("Subscriptions"),LIBRARY("Library"),SETTINGS("Settings"),PLAYER("Player")}
+private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVER("Discover"),SUBSCRIPTIONS("Subscriptions"),CHANNEL("Channel"),LIBRARY("Library"),SETTINGS("Settings"),PLAYER("Player")}
 
 @Composable private fun OctoPipeApp(player:Player?,onPip:()->Unit){
  val context=androidx.compose.ui.platform.LocalContext.current
@@ -89,6 +89,8 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
  val playlistVideos=remember{mutableStateListOf<VideoItem>()}
  var discoverMode by remember{mutableStateOf("Channels")}
  var activePlaylist by remember{mutableStateOf<PlaylistItem?>(null)}
+ var activeChannel by remember{mutableStateOf<ChannelItem?>(null)}
+ val channelVideos=remember{mutableStateListOf<VideoItem>()}
  var current by remember{mutableStateOf<StreamInfo?>(null)}
  var segments by remember{mutableStateOf<List<SponsorSegment>>(emptyList())}
  var captionMenu by remember{mutableStateOf(false)}
@@ -102,6 +104,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
   else{playlistResults.clear();playlistResults.addAll(DiscoveryRepository.searchPlaylists(provider,query))}
  }catch(e:Exception){error=e.message?:"Discovery failed"}finally{loading=false}}}
  fun openPlaylist(p:PlaylistItem){if(p.id.isBlank()){activePlaylist=null;playlistVideos.clear();return};scope.launch{loading=true;error=null;activePlaylist=p;try{playlistVideos.clear();playlistVideos.addAll(DiscoveryRepository.playlistVideos(p))}catch(e:Exception){error=e.message?:"Could not load playlist"}finally{loading=false}}}
+ fun openChannel(ch:ChannelItem){activeChannel=ch;tab=Tab.CHANNEL;scope.launch{loading=true;error=null;try{channelVideos.clear();channelVideos.addAll(DiscoveryRepository.channelVideos(ch))}catch(e:Exception){error=e.message?:"Could not load channel"}finally{loading=false}}}
  fun downloadPlaylist(){val list=playlistVideos.toList();scope.launch{loading=true;var count=0;for(v in list){try{val info=VideoRepository.resolve(v);if(info.downloadUrl!=null){DownloadHelper.enqueue(context,info);count++}}catch(_:Exception){}};error="Queued "+count+" of "+list.size+" videos";loading=false}}
  fun play(v:VideoItem){scope.launch{error=null;tab=Tab.PLAYER;try{
   val info=VideoRepository.resolve(v);current=info;selectedQuality=info.variants.firstOrNull()?.label?:"Auto";store.addHistory(v)
@@ -121,17 +124,20 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
       Tab.entries.filter{it!=Tab.PLAYER}.forEach{t->NavigationRailItem(selected=tab==t,onClick={tab=t},icon={TabIcon(t)},label={Text(t.label)})}
      }
      Column(Modifier.weight(1f).fillMaxSize()){
-      Header{tab=Tab.SETTINGS}
+      if(!playerFullscreen)Header{tab=Tab.SETTINGS}
       Box(Modifier.weight(1f).fillMaxWidth()){
        when(tab){
         Tab.HOME->SearchPage(query,{query=it},provider,{provider=it},{search()},results,loading,error,::play,true){tab=Tab.DISCOVER}
         Tab.EXPLORE->SearchPage(query,{query=it},provider,{provider=it},{search()},results,loading,error,::play,false)
         Tab.DISCOVER->DiscoverPage(query,{query=it},provider,{provider=it},discoverMode,{discoverMode=it;channelResults.clear();playlistResults.clear()},{searchDiscovery()},channelResults,playlistResults,playlistVideos,activePlaylist,loading,error,{ch->
          val added=store.toggleSubscription(ch);subscriptions.removeAll{it.id==ch.id&&it.service==ch.service};if(added)subscriptions.add(0,ch)
-        },::openPlaylist,::downloadPlaylist,::play)
+        },::openPlaylist,::downloadPlaylist,::play,::openChannel)
         Tab.SUBSCRIPTIONS->SubscriptionsPage(subscriptions,{ch->
          store.toggleSubscription(ch);subscriptions.removeAll{it.id==ch.id&&it.service==ch.service}
-        })
+        },::openChannel)
+        Tab.CHANNEL->ChannelPage(activeChannel,channelVideos,subscriptions.any{it.id==activeChannel?.id&&it.service==activeChannel?.service},loading,error,{ch->
+         val added=store.toggleSubscription(ch);subscriptions.removeAll{it.id==ch.id&&it.service==ch.service};if(added)subscriptions.add(0,ch)
+        },::play){tab=Tab.DISCOVER}
         Tab.LIBRARY->LibraryPage(favorites,history,::play)
         Tab.SETTINGS->SettingsPage(provider,{provider=it})
         Tab.PLAYER->PlayerPage(player,current,segments,error,{captionMenu=it},captionMenu,{current?.let{DownloadHelper.enqueue(context,it)}},{current?.let{DownloadHelper.enqueueAudio(context,it)}},onPip,qualityMenu,{qualityMenu=it},{label->
@@ -144,7 +150,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
         }
        }
       }
-      if(!wide)NavigationBar(containerColor=Color(0xFF0D1320),contentColor=White,tonalElevation=0.dp){
+      if(!wide&&!playerFullscreen)NavigationBar(containerColor=Color(0xFF0D1320),contentColor=White,tonalElevation=0.dp){
        listOf(Tab.HOME,Tab.DISCOVER,Tab.SUBSCRIPTIONS,Tab.LIBRARY).forEach{t->
         NavigationBarItem(selected=tab==t,onClick={tab=t},icon={TabIcon(t)},label={Text(t.label,fontSize=10.sp)},alwaysShowLabel=true,
          colors=NavigationBarItemDefaults.colors(selectedIconColor=Blue,selectedTextColor=Blue,indicatorColor=Color(0xFF1A2940),unselectedIconColor=Muted,unselectedTextColor=Muted))
@@ -336,7 +342,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
   }
  }
 }
-@Composable private fun SubscriptionsPage(channels:List<ChannelItem>,onUnsubscribe:(ChannelItem)->Unit){
+@Composable private fun SubscriptionsPage(channels:List<ChannelItem>,onUnsubscribe:(ChannelItem)->Unit,onChannel:(ChannelItem)->Unit){
  LazyColumn(Modifier.fillMaxSize().padding(horizontal=18.dp),verticalArrangement=Arrangement.spacedBy(11.dp),contentPadding=PaddingValues(top=8.dp,bottom=24.dp)){
   item{Text("Subscriptions",fontSize=28.sp,fontWeight=FontWeight.Bold,color=White);Text("Your followed creators, saved on this device",color=Muted,fontSize=13.sp)}
   if(channels.isEmpty())item{EmptyCard("No subscriptions yet. Open Discover, search for a channel, and tap Subscribe.")}
@@ -347,6 +353,23 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
     TextButton(onClick={onUnsubscribe(ch)}){Text("Following",color=Blue)}
    }
   }
+ }
+}
+@Composable private fun ChannelPage(channel:ChannelItem?,videos:List<VideoItem>,following:Boolean,loading:Boolean,error:String?,onSubscribe:(ChannelItem)->Unit,onPlay:(VideoItem)->Unit,onBack:()->Unit){
+ LazyColumn(Modifier.fillMaxSize().padding(horizontal=18.dp),verticalArrangement=Arrangement.spacedBy(12.dp),contentPadding=PaddingValues(top=8.dp,bottom=24.dp)){
+  item{Text("‹  Back to Discover",color=Blue,modifier=Modifier.clickable(onClick=onBack).padding(vertical=8.dp))}
+  if(channel!=null)item{
+   Row(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(Color(0xFF1A2A49),Color(0xFF252044))),RoundedCornerShape(22.dp)).padding(16.dp),verticalAlignment=Alignment.CenterVertically){
+    AsyncImage(model=channel.thumbnail.ifBlank{null},contentDescription=null,modifier=Modifier.size(68.dp).background(Raised,RoundedCornerShape(34.dp)))
+    Spacer(Modifier.width(12.dp));Column(Modifier.weight(1f)){Text(channel.name,color=White,fontWeight=FontWeight.Bold,fontSize=18.sp,maxLines=2);Text(channel.service,color=Muted,fontSize=11.sp)}
+    Button(onClick={onSubscribe(channel)}){Text(if(following)"Following" else "Subscribe")}
+   }
+   item{Heading("Latest videos","Videos published by this creator")}
+  }
+  if(loading)item{CircularProgressIndicator(color=Blue)}
+  if(error!=null)item{ErrorLabel(error)}
+  if(videos.isEmpty()&&!loading)item{EmptyCard("No videos were returned for this channel.")}
+  items(videos,key={"channel-video-"+it.service+it.id}){VideoCard(it,onPlay)}
  }
 }
 @Composable private fun Heading(title:String,subtitle:String){Column(verticalArrangement=Arrangement.spacedBy(3.dp)){Text(title,color=White,fontWeight=FontWeight.SemiBold,fontSize=17.sp);Text(subtitle,color=Muted,fontSize=12.sp)}}
