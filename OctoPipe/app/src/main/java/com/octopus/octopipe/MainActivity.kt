@@ -232,6 +232,58 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
   if(error!=null)ErrorLabel(error)
  }
 }
+@Composable private fun DiscoverPage(
+ query:String,onQuery:(String)->Unit,provider:ServiceProvider,onProvider:(ServiceProvider)->Unit,
+ mode:String,onMode:(String)->Unit,onSearch:()->Unit,channels:List<ChannelItem>,playlists:List<PlaylistItem>,
+ videos:List<VideoItem>,activePlaylist:PlaylistItem?,loading:Boolean,error:String?,
+ onSubscribe:(ChannelItem)->Unit,onPlaylist:(PlaylistItem)->Unit,onDownloadPlaylist:()->Unit,onPlay:(VideoItem)->Unit
+){
+ LazyColumn(Modifier.fillMaxSize().padding(horizontal=18.dp),verticalArrangement=Arrangement.spacedBy(12.dp),contentPadding=PaddingValues(top=8.dp,bottom=24.dp)){
+  item{Text("Discover",fontSize=28.sp,fontWeight=FontWeight.Bold,color=White);Text("Find creators and collections",color=Muted,fontSize=13.sp)}
+  if(activePlaylist!=null){
+   item{Row(verticalAlignment=Alignment.CenterVertically){Text("←",color=Blue,modifier=Modifier.clickable{onPlaylist(PlaylistItem("","","","",0,"",""))}.padding(8.dp));Column{Text(activePlaylist.title,color=White,fontWeight=FontWeight.Bold);Text(activePlaylist.author+" · "+activePlaylist.videoCount+" videos",color=Muted,fontSize=12.sp)}}}
+   item{Button(onClick=onDownloadPlaylist,enabled=videos.isNotEmpty(),modifier=Modifier.fillMaxWidth()){Icon(Icons.Outlined.Download,null);Spacer(Modifier.width(8.dp));Text("Download playlist")}}
+   if(loading)item{CircularProgressIndicator(color=Blue)}
+   items(videos,key={"playlist-"+it.service+it.id}){VideoCard(it,onPlay)}
+  }else{
+   item{Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){FilterChip(selected=mode=="Channels",onClick={onMode("Channels")},label={Text("Channels")});FilterChip(selected=mode=="Playlists",onClick={onMode("Playlists")},label={Text("Playlists")})}}
+   item{Row(Modifier.fillMaxWidth().background(Raised,RoundedCornerShape(14.dp)).padding(12.dp),verticalAlignment=Alignment.CenterVertically){
+    BasicTextField(value=query,onValueChange=onQuery,modifier=Modifier.weight(1f),singleLine=true,cursorBrush=SolidColor(Blue),textStyle=MaterialTheme.typography.bodyLarge.copy(color=White),decorationBox={inner->if(query.isEmpty())Text("Search "+mode.lowercase(),color=Muted);inner()})
+    Button(onClick=onSearch,enabled=query.isNotBlank()){Icon(Icons.Outlined.Search,null)}
+   }}
+   item{Row(horizontalArrangement=Arrangement.spacedBy(7.dp)){ServiceProvider.entries.forEach{p->FilterChip(selected=provider==p,onClick={onProvider(p)},label={Text(p.title)})}}}
+   if(loading)item{Row(verticalAlignment=Alignment.CenterVertically){CircularProgressIndicator(modifier=Modifier.size(18.dp),color=Blue);Spacer(Modifier.width(8.dp));Text("Searching…",color=Muted)}}
+   if(error!=null)item{ErrorLabel(error)}
+   if(mode=="Channels")items(channels,key={"channel-"+it.service+it.id}){ch->
+    Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(14.dp)).padding(12.dp),verticalAlignment=Alignment.CenterVertically){
+     AsyncImage(model=ch.thumbnail.ifBlank{null},contentDescription=null,modifier=Modifier.size(48.dp).background(Raised,RoundedCornerShape(24.dp)))
+     Spacer(Modifier.width(10.dp));Column(Modifier.weight(1f)){Text(ch.name,color=White,fontWeight=FontWeight.SemiBold,maxLines=1);Text(ch.service,color=Muted,fontSize=11.sp)}
+     OutlinedButton(onClick={onSubscribe(ch)}){Icon(Icons.Outlined.Add,null);Text("Subscribe")}
+    }
+   }
+   else items(playlists,key={"playlist-result-"+it.service+it.id}){p->
+    Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(14.dp)).clickable{onPlaylist(p)}.padding(12.dp),verticalAlignment=Alignment.CenterVertically){
+     Icon(Icons.Outlined.PlaylistPlay,null,tint=Blue,modifier=Modifier.size(46.dp));Spacer(Modifier.width(10.dp))
+     Column(Modifier.weight(1f)){Text(p.title,color=White,fontWeight=FontWeight.SemiBold,maxLines=2);Text(p.author+" · "+p.videoCount+" videos",color=Muted,fontSize=11.sp)}
+     Icon(Icons.Outlined.ChevronRight,null,tint=Muted)
+    }
+   }
+  }
+ }
+}
+@Composable private fun SubscriptionsPage(channels:List<ChannelItem>,onUnsubscribe:(ChannelItem)->Unit){
+ LazyColumn(Modifier.fillMaxSize().padding(horizontal=18.dp),verticalArrangement=Arrangement.spacedBy(11.dp),contentPadding=PaddingValues(top=8.dp,bottom=24.dp)){
+  item{Text("Subscriptions",fontSize=28.sp,fontWeight=FontWeight.Bold,color=White);Text("Your followed creators, saved on this device",color=Muted,fontSize=13.sp)}
+  if(channels.isEmpty())item{EmptyCard("No subscriptions yet. Open Discover, search for a channel, and tap Subscribe.")}
+  items(channels,key={"sub-"+it.service+it.id}){ch->
+   Row(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(14.dp)).padding(12.dp),verticalAlignment=Alignment.CenterVertically){
+    AsyncImage(model=ch.thumbnail.ifBlank{null},contentDescription=null,modifier=Modifier.size(48.dp).background(Raised,RoundedCornerShape(24.dp)))
+    Spacer(Modifier.width(10.dp));Column(Modifier.weight(1f)){Text(ch.name,color=White,fontWeight=FontWeight.SemiBold);Text(ch.service,color=Muted,fontSize=11.sp)}
+    TextButton(onClick={onUnsubscribe(ch)}){Text("Following",color=Blue)}
+   }
+  }
+ }
+}
 @Composable private fun Heading(title:String,subtitle:String){Column(verticalArrangement=Arrangement.spacedBy(3.dp)){Text(title,color=White,fontWeight=FontWeight.SemiBold,fontSize=17.sp);Text(subtitle,color=Muted,fontSize=12.sp)}}
 @Composable private fun InfoCard(title:String,subtitle:String){Column(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(14.dp)).padding(15.dp),verticalArrangement=Arrangement.spacedBy(4.dp)){Text(title,color=White,fontWeight=FontWeight.SemiBold);Text(subtitle,color=Muted,fontSize=12.sp)}}
 @Composable private fun EmptyCard(text:String){Box(Modifier.fillMaxWidth().background(Panel,RoundedCornerShape(14.dp)).padding(17.dp)){Text(text,color=Muted,fontSize=13.sp,lineHeight=18.sp)}}
