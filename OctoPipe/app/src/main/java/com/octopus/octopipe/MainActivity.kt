@@ -197,12 +197,14 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),LIBRARY
    if(info.captions.isNotEmpty())Box{
     OutlinedButton(onClick={onCaptionMenu(true)}){Text("Subtitles")}
     DropdownMenu(expanded=captionMenu,onDismissRequest={onCaptionMenu(false)}){
-     info.captions.forEach{c->DropdownMenuItem(text={Text(c.label)},onClick={player.trackSelectionParameters.let{_->{
-      player.trackSelectionParameters=player.trackSelectionParameters.buildUpon().setPreferredTextLanguage(c.languageCode).setTrackTypeDisabled(C.TRACK_TYPE_TEXT,false).build();onCaptionMenu(false)
-     }})}
-     DropdownMenuItem(text={Text("Turn subtitles off")},onClick={player.trackSelectionParameters.let{_->{
-      player.trackSelectionParameters=player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT,true).build();onCaptionMenu(false)
-     }})}
+     info.captions.forEach{c->DropdownMenuItem(text={Text(c.label)},onClick={
+      player.trackSelectionParameters=player.trackSelectionParameters.buildUpon().setPreferredTextLanguage(c.languageCode).setTrackTypeDisabled(C.TRACK_TYPE_TEXT,false).build()
+      onCaptionMenu(false)
+     })}
+     DropdownMenuItem(text={Text("Turn subtitles off")},onClick={
+      player.trackSelectionParameters=player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT,true).build()
+      onCaptionMenu(false)
+     })}
     }
    }
    if(segments.isNotEmpty())Text("SponsorBlock active · "+segments.size+" segments",color=Blue,fontSize=12.sp)
