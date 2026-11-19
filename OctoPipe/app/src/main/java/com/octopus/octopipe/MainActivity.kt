@@ -190,7 +190,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),LIBRARY
    AndroidView(factory={ctx->PlayerView(ctx).apply{this.player=player;useController=true;setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)}},update={it.player=player},modifier=Modifier.fillMaxWidth().height(220.dp).background(Color.Black,RoundedCornerShape(12.dp)))
    Text(info.video.title,color=White,fontSize=16.sp,fontWeight=FontWeight.SemiBold,maxLines=2,overflow=TextOverflow.Ellipsis);Text(info.video.author,color=Muted,fontSize=12.sp)
    Row(horizontalArrangement=Arrangement.spacedBy(5.dp)){
-    OutlinedButton(onClick=onDownload){Icon(Icons.Outlined.Download,null);Text("Download")}
+    OutlinedButton(onClick=onDownload,enabled=info.downloadUrl!=null){Icon(Icons.Outlined.Download,null);Text("Download")}
     OutlinedButton(onClick=onPip){Icon(Icons.Outlined.PictureInPictureAlt,null);Text("PiP")}
     OutlinedButton(onClick={onFavorite(info.video)}){Icon(Icons.Outlined.BookmarkAdd,null);Text("Save")}
    }
@@ -207,7 +207,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),LIBRARY
      })
     }
    }
-   if(segments.isNotEmpty())Text("SponsorBlock active · "+segments.size+" segments",color=Blue,fontSize=12.sp)
+   if(info.downloadUrl==null)Text("Offline download unavailable for this stream format.",color=Muted,fontSize=11.sp)\n   if(segments.isNotEmpty())Text("SponsorBlock active · "+segments.size+" segments",color=Blue,fontSize=12.sp)
    Text("Background audio is managed by the media session service.",color=Muted,fontSize=11.sp)
   }else EmptyCard("Select a video from Search or Explore to start playback.")
   if(error!=null)ErrorLabel(error)
