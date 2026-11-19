@@ -27,12 +27,12 @@ object DiscoveryRepository {
     suspend fun searchChannels(service:ServiceProvider,q:String):List<ChannelItem> = withContext(Dispatchers.IO){
         if(service==ServiceProvider.YOUTUBE) youtube { host ->
             val url=Uri.parse(host+"/api/v1/search").buildUpon().appendQueryParameter("q",q).appendQueryParameter("type","channel").build().toString()
-            val a=JSONArray(json(url).optJSONArray("items")?.toString() ?: getArray(url))
+            val a=JSONArray(getArray(url))
             (0 until a.length()).mapNotNull{i->val o=a.optJSONObject(i)?:return@mapNotNull null;if(o.optString("type")!="channel")return@mapNotNull null;val id=o.optString("authorId");if(id.isBlank())return@mapNotNull null;ChannelItem(id,o.optString("author","Channel"),o.optJSONArray("authorThumbnails")?.optJSONObject(0)?.optString("url").orEmpty(),service.name,"https://www.youtube.com/channel/$id")}
         } else {
             val url=Uri.parse(peerTube+"/api/v1/search/video-channels").buildUpon().appendQueryParameter("search",q).appendQueryParameter("count","20").build().toString()
             val a=json(url).optJSONArray("data")?:JSONArray()
-            (0 until a.length()).mapNotNull{i->val o=a.optJSONObject(i)?:return@mapNotNull null;val id=o.optString("id");if(id.isBlank())return@mapNotNull null;ChannelItem(id,o.optString("displayName","Channel"),o.optString("avatar")?.let{if(it.startsWith("http"))it else ""}.orEmpty(),service.name,o.optString("url"))}
+            (0 until a.length()).mapNotNull{i->val o=a.optJSONObject(i)?:return@mapNotNull null;val id=o.optString("id");if(id.isBlank())return@mapNotNull null;ChannelItem(id,o.optString("displayName","Channel"),o.optString("avatar").let{if(it.startsWith("http"))it else ""},service.name,o.optString("url"))}
         }
     }
     suspend fun searchPlaylists(service:ServiceProvider,q:String):List<PlaylistItem> = withContext(Dispatchers.IO){
