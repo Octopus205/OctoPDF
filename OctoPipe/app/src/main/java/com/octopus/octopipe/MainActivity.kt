@@ -112,7 +112,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
       Tab.entries.filter{it!=Tab.PLAYER}.forEach{t->NavigationRailItem(selected=tab==t,onClick={tab=t},icon={TabIcon(t)},label={Text(t.label)})}
      }
      Column(Modifier.weight(1f).fillMaxSize()){
-      Header()
+      Header{tab=Tab.SETTINGS}
       Box(Modifier.weight(1f).fillMaxWidth()){
        when(tab){
         Tab.HOME->SearchPage(query,{query=it},provider,{provider=it},{search()},results,loading,error,::play,true)
@@ -140,10 +140,10 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
   }
  }
 }
-@Composable private fun Header(){
+@Composable private fun Header(onSettings:()->Unit){
  Row(Modifier.fillMaxWidth().padding(horizontal=20.dp,vertical=13.dp),verticalAlignment=Alignment.CenterVertically){
   AppMark();Spacer(Modifier.width(10.dp));Column{Text("OctoPipe",fontSize=21.sp,fontWeight=FontWeight.Bold,color=White);Text("Your video space",fontSize=11.sp,color=Muted)}
-  Spacer(Modifier.weight(1f));Text("0.2.0",fontSize=11.sp,color=Muted)
+  Spacer(Modifier.weight(1f));IconButton(onClick=onSettings){Icon(Icons.Outlined.Settings,null,tint=Muted)};Text("0.3.0",fontSize=11.sp,color=Muted)
  }
 }
 @Composable private fun AppMark(modifier:Modifier=Modifier){AsyncImage(model=com.octopus.octopipe.R.drawable.octopipe_icon,contentDescription="OctoPipe octopus icon",modifier=modifier.size(40.dp))}
