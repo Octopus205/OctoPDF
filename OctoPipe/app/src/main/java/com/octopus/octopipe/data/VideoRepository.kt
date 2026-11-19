@@ -16,7 +16,7 @@ private interface VideoEngine {
     fun resolve(video:VideoItem):StreamInfo
 }
 private object ProviderHttp {
-    val client=OkHttpClient.Builder().connectTimeout(4,TimeUnit.SECONDS).readTimeout(8,TimeUnit.SECONDS).callTimeout(10,TimeUnit.SECONDS).build()
+    val client=OkHttpClient.Builder().connectTimeout(3,TimeUnit.SECONDS).readTimeout(5,TimeUnit.SECONDS).callTimeout(7,TimeUnit.SECONDS).build()
     fun get(url:String):String {
         val request=Request.Builder().url(url).header("User-Agent","OctoPipe/0.3.0 Android").header("Accept","application/json").build()
         client.newCall(request).execute().use { r -> if(!r.isSuccessful) error("Provider HTTP ${r.code}"); return r.body?.string()?:error("Empty provider response") }
@@ -30,7 +30,7 @@ private object YouTubeEngine:VideoEngine {
     @Volatile private var lastGoodHost:String?=null
     private fun <T> retry(block:(String)->T):T {
         val errors=mutableListOf<String>()
-        val ordered=(listOfNotNull(lastGoodHost)+fallback).distinct().take(3)
+        val ordered=(listOfNotNull(lastGoodHost)+fallback).distinct().take(2)
         for(host in ordered){try{val result=block(host);lastGoodHost=host;return result}catch(e:Exception){errors.add("${host.removePrefix("https://")}: ${e.message?: "failed"}")}}
         error("Video service is taking too long or unavailable. Please retry. "+errors.take(2).joinToString(" | "))
     }
