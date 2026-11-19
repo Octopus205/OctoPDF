@@ -148,7 +148,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
     val wide=maxWidth>=600.dp
     Row(Modifier.fillMaxSize()){
      if(wide&&!playerFullscreen)NavigationRail(containerColor=Bg,header={AppMark(Modifier.padding(vertical=18.dp))}){
-      Tab.entries.filter{it!=Tab.PLAYER&&it!=Tab.CHANNEL}.forEach{t->NavigationRailItem(selected=tab==t,onClick={tab=t},icon={TabIcon(t)},label={Text(t.label)})}
+      Tab.entries.filter{it!=Tab.PLAYER&&it!=Tab.CHANNEL&&it!=Tab.SETTINGS}.forEach{t->NavigationRailItem(selected=tab==t,onClick={tab=t},icon={TabIcon(t)},label={Text(t.label)})}
      }
      Column(Modifier.weight(1f).fillMaxSize()){
       if(!playerFullscreen)Header{scope.launch{drawerState.open()}}
@@ -166,13 +166,23 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
          val added=store.toggleSubscription(ch);subscriptions.removeAll{it.id==ch.id&&it.service==ch.service};if(added)subscriptions.add(0,ch)
         },::play){tab=channelReturnTab}
         Tab.LIBRARY->LibraryPage(favorites,history,::play)
-        Tab.SETTINGS->SettingsPage(provider,{provider=it})
+        Tab.SETTINGS->SettingsPage(provider,::changeProvider)
         Tab.PLAYER->PlayerPage(player,current,segments,loading,error,{captionMenu=it},captionMenu,{current?.let{DownloadHelper.enqueue(context,it)}},{current?.let{DownloadHelper.enqueueAudio(context,it)}},onPip,qualityMenu,{qualityMenu=it},{label->
          val info=current?:return@PlayerPage
          val variant=info.variants.firstOrNull{it.label==label}
-         val target=variant?.url?:info.streamUrl
-         val pos=player?.currentPosition?:0L;val wasPlaying=player?.isPlaying==true
-         selectedQuality=label;player?.setMediaItem(MediaItem.Builder().setUri(target).setMediaMetadata(MediaMetadata.Builder().setTitle(info.video.title).setArtist(info.video.author).build()).setSubtitleConfigurations(info.captions.map{cap->MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(cap.url)).setMimeType(MimeTypes.TEXT_VTT).setLanguage(cap.languageCode).build()}).build(),pos);player?.prepare();if(wasPlaying)player?.play()
+         if(variant==null&&info.mimeType.contains("mpegurl",true)){
+          val height=label.removeSuffix("p").toIntOrNull()
+          val params=player?.trackSelectionParameters?.buildUpon()?.let{builder->
+           if(height==null)builder.setMaxVideoSize(Int.MAX_VALUE,Int.MAX_VALUE) else builder.setMaxVideoSize((height*16)/9,height)
+           builder.build()
+          }
+          if(params!=null)player?.trackSelectionParameters=params
+          selectedQuality=label
+         }else{
+          val target=variant?.url?:info.streamUrl
+          val pos=player?.currentPosition?:0L;val wasPlaying=player?.isPlaying==true
+          selectedQuality=label;player?.setMediaItem(MediaItem.Builder().setUri(target).setMediaMetadata(MediaMetadata.Builder().setTitle(info.video.title).setArtist(info.video.author).build()).setSubtitleConfigurations(info.captions.map{cap->MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(cap.url)).setMimeType(MimeTypes.TEXT_VTT).setLanguage(cap.languageCode).build()}).build(),pos);player?.prepare();if(wasPlaying)player?.play()
+         }
         },selectedQuality,playerFullscreen,{playerFullscreen=it},{resizeMode=when(resizeMode){AspectRatioFrameLayout.RESIZE_MODE_FIT->AspectRatioFrameLayout.RESIZE_MODE_ZOOM;AspectRatioFrameLayout.RESIZE_MODE_ZOOM->AspectRatioFrameLayout.RESIZE_MODE_FILL;else->AspectRatioFrameLayout.RESIZE_MODE_FIT}},resizeMode){v->
          val added=store.toggle(v);favorites.removeAll{it.id==v.id&&it.service==v.service};if(added)favorites.add(0,v)
         }
@@ -335,7 +345,8 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
      Box{OutlinedButton(onClick={onQualityMenu(true)}){Icon(Icons.Outlined.HighQuality,null);Text(selectedQuality);Icon(Icons.Outlined.ArrowDropDown,null)}
       DropdownMenu(expanded=qualityMenu,onDismissRequest={onQualityMenu(false)}){
        DropdownMenuItem(text={Text("Auto")},onClick={onQuality("Auto")})
-       info.variants.forEach{variant->DropdownMenuItem(text={Text(variant.label)},onClick={onQuality(variant.label)})}
+       if(info.variants.isNotEmpty())info.variants.forEach{variant->DropdownMenuItem(text={Text(variant.label)},onClick={onQuality(variant.label)})}
+       else if(info.mimeType.contains("mpegurl",true))listOf("1080p","720p","480p","360p").forEach{label->DropdownMenuItem(text={Text(label)},onClick={onQuality(label)})}
       }
      }
      OutlinedButton(onClick=onResize){Icon(Icons.Outlined.AspectRatio,null);Text(when(displayMode){AspectRatioFrameLayout.RESIZE_MODE_FIT->"Fit";AspectRatioFrameLayout.RESIZE_MODE_ZOOM->"Zoom";else->"Fill"})}
@@ -356,7 +367,11 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
       info.captions.forEach{caption->DropdownMenuItem(text={Text(caption.label)},onClick={
        player.trackSelectionParameters=player.trackSelectionParameters.buildUpon().setPreferredTextLanguage(caption.languageCode).setTrackTypeDisabled(C.TRACK_TYPE_TEXT,false).build();onCaptionMenu(false)
       })}
-      DropdownMenuItem(text={Text("Turn subtitles off")},onClick={player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT,true).build().let{params->{player.trackSelectionParameters=params;onCaptionMenu(false)}}})
+      DropdownMenuItem(text={Text("Turn subtitles off")},onClick={
+       val params=player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT,true).build()
+       player.trackSelectionParameters=params
+       onCaptionMenu(false)
+      })
      }
     }
     if(info.downloadUrl==null)Text("Offline video download unavailable for this stream format.",color=Muted,fontSize=11.sp)
@@ -420,7 +435,7 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
 }
 @Composable private fun ChannelPage(channel:ChannelItem?,videos:List<VideoItem>,following:Boolean,loading:Boolean,error:String?,onSubscribe:(ChannelItem)->Unit,onPlay:(VideoItem)->Unit,onBack:()->Unit){
  LazyColumn(Modifier.fillMaxSize().padding(horizontal=18.dp),verticalArrangement=Arrangement.spacedBy(12.dp),contentPadding=PaddingValues(top=8.dp,bottom=24.dp)){
-  item{Text("‹  Back to Discover",color=Blue,modifier=Modifier.clickable(onClick=onBack).padding(vertical=8.dp))}
+  item{Text("‹  Back",color=Blue,modifier=Modifier.clickable(onClick=onBack).padding(vertical=8.dp))}
   if(channel!=null)item{
    Row(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(Color(0xFF1A2A49),Color(0xFF252044))),RoundedCornerShape(22.dp)).padding(16.dp),verticalAlignment=Alignment.CenterVertically){
     AsyncImage(model=channel.thumbnail.ifBlank{null},contentDescription=null,modifier=Modifier.size(68.dp).background(Raised,RoundedCornerShape(34.dp)))
