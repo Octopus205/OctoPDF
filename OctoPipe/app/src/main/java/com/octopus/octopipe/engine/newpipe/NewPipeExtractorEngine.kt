@@ -1,5 +1,6 @@
 package com.octopus.octopipe.engine.newpipe
 
+import com.octopus.octopipe.engine.VideoEngine
 import com.octopus.octopipe.data.CaptionTrack
 import com.octopus.octopipe.data.ServiceProvider
 import com.octopus.octopipe.data.StreamInfo
@@ -13,7 +14,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  * First-party OctoPipe adapter around NewPipe Extractor.
  * Only normalized OctoPipe data types cross this boundary.
  */
-object NewPipeExtractorEngine {
+object NewPipeExtractorEngine : VideoEngine {
+    override val id: String = "newpipe-extractor"
+    override fun supports(service: String): Boolean = service == ServiceProvider.YOUTUBE.name
     private val initialized = AtomicBoolean(false)
 
     private fun initialize() {
@@ -22,7 +25,7 @@ object NewPipeExtractorEngine {
         }
     }
 
-    fun search(query: String): List<VideoItem> {
+    override fun search(query: String): List<VideoItem> {
         initialize()
         val service = ServiceList.YouTube
         val extractor = service.getSearchExtractor(query)
@@ -43,7 +46,7 @@ object NewPipeExtractorEngine {
             }
     }
 
-    fun resolve(video: VideoItem): StreamInfo {
+    override fun resolve(video: VideoItem): StreamInfo {
         initialize()
         val extractor = ServiceList.YouTube.getStreamExtractor(video.watchUrl)
         extractor.fetchPage()
