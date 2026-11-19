@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit
 
 /** Discovery endpoints are kept separate from playback so UI features can evolve independently. */
 object DiscoveryRepository {
-    private val client=OkHttpClient.Builder().connectTimeout(8,TimeUnit.SECONDS).readTimeout(14,TimeUnit.SECONDS).build()
+    private val client=OkHttpClient.Builder().connectTimeout(4,TimeUnit.SECONDS).readTimeout(8,TimeUnit.SECONDS).callTimeout(10,TimeUnit.SECONDS).build()
     private val youtubeHosts=listOf("https://inv.nadeko.net","https://invidious.nerdvpn.de","https://invidious.privacyredirect.com")
     private const val peerTube="https://peertube.tv"
     private fun json(url:String):JSONObject {
@@ -21,7 +21,7 @@ object DiscoveryRepository {
     private fun array(url:String)=JSONArray(json(url).toString())
     private fun youtube(block:(String)->List<ChannelItem>):List<ChannelItem>{
         var failure:Exception?=null
-        for(host in youtubeHosts)try{return block(host)}catch(e:Exception){failure=e}
+        for(host in youtubeHosts.take(2))try{return block(host)}catch(e:Exception){failure=e}
         throw failure?:IllegalStateException("YouTube discovery unavailable")
     }
     suspend fun searchChannels(service:ServiceProvider,q:String):List<ChannelItem> = withContext(Dispatchers.IO){
