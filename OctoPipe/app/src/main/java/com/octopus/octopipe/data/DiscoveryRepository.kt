@@ -32,7 +32,7 @@ object DiscoveryRepository {
         } else {
             val url=Uri.parse(peerTube+"/api/v1/search/video-channels").buildUpon().appendQueryParameter("search",q).appendQueryParameter("count","20").build().toString()
             val a=json(url).optJSONArray("data")?:JSONArray()
-            (0 until a.length()).mapNotNull{i->val o=a.optJSONObject(i)?:return@mapNotNull null;val id=o.optString("id");if(id.isBlank())return@mapNotNull null;ChannelItem(id,o.optString("displayName","Channel"),o.optString("avatar").let{if(it.startsWith("http"))it else ""},service.name,o.optString("url"))}
+            (0 until a.length()).mapNotNull{i->val o=a.optJSONObject(i)?:return@mapNotNull null;val id=o.optString("id");if(id.isBlank())return@mapNotNull null;ChannelItem(id,o.optString("displayName","Channel"),o.optJSONArray("avatars")?.optJSONObject(0)?.optString("fileUrl").orEmpty(),service.name,o.optString("url"))}
         }
     }
     suspend fun searchPlaylists(service:ServiceProvider,q:String):List<PlaylistItem> = withContext(Dispatchers.IO){
@@ -47,7 +47,7 @@ object DiscoveryRepository {
         }else{
             val url=Uri.parse(peerTube+"/api/v1/search/video-playlists").buildUpon().appendQueryParameter("search",q).appendQueryParameter("count","20").build().toString()
             val a=json(url).optJSONArray("data")?:JSONArray()
-            (0 until a.length()).mapNotNull{i->val o=a.optJSONObject(i)?:return@mapNotNull null;val id=o.optString("uuid");if(id.isBlank())return@mapNotNull null;PlaylistItem(id,o.optString("displayName","Playlist"),o.optJSONObject("owner")?.optString("displayName","Creator")?:"Creator",o.optString("thumbnailPath"),o.optInt("videosLength"),service.name,o.optString("url"))}
+            (0 until a.length()).mapNotNull{i->val o=a.optJSONObject(i)?:return@mapNotNull null;val id=o.optString("uuid");if(id.isBlank())return@mapNotNull null;PlaylistItem(id,o.optString("displayName","Playlist"),o.optJSONObject("owner")?.optString("displayName","Creator")?:"Creator",o.optString("thumbnailPath"),o.optInt("videoLength"),service.name,o.optString("url"))}
         }
     }
     suspend fun playlistVideos(p:PlaylistItem):List<VideoItem> = withContext(Dispatchers.IO){
