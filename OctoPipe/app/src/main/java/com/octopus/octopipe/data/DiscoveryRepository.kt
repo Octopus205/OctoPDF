@@ -35,6 +35,21 @@ object DiscoveryRepository {
             (0 until a.length()).mapNotNull{i->val o=a.optJSONObject(i)?:return@mapNotNull null;val id=o.optString("id");if(id.isBlank())return@mapNotNull null;ChannelItem(id,o.optString("displayName","Channel"),o.optJSONArray("avatars")?.optJSONObject(0)?.optString("fileUrl").orEmpty(),service.name,o.optString("url"))}
         }
     }
+    suspend fun channelVideos(ch:ChannelItem):List<VideoItem> = withContext(Dispatchers.IO){
+        if(ch.service==ServiceProvider.YOUTUBE.name){
+            var failure:Exception?=null
+            for(host in youtubeHosts)try{
+                val url=Uri.parse("$host/api/v1/channels/${ch.id}/videos").buildUpon().appendQueryParameter("sort_by","newest").build().toString()
+                val a=JSONArray(getArray(url))
+                return@withContext (0 until a.length()).mapNotNull{i->val v=a.optJSONObject(i)?:return@mapNotNull null;val id=v.optString("videoId");if(id.isBlank())return@mapNotNull null;VideoItem(id,v.optString("title","Untitled"),ch.name,"https://i.ytimg.com/vi/$id/hqdefault.jpg",v.optLong("lengthSeconds"),v.optLong("viewCount"),ch.service,"https://www.youtube.com/watch?v=$id",ch.id,ch.url)}
+            }catch(e:Exception){failure=e}
+            throw failure?:IllegalStateException("Could not load channel videos")
+        }else{
+            val url=Uri.parse("$peerTube/api/v1/video-channels/${ch.id}/videos").buildUpon().appendQueryParameter("count","30").appendQueryParameter("sort","-publishedAt").build().toString()
+            val a=json(url).optJSONArray("data")?:JSONArray()
+            (0 until a.length()).mapNotNull{i->val v=a.optJSONObject(i)?:return@mapNotNull null;val id=v.optString("uuid");if(id.isBlank())return@mapNotNull null;VideoItem(id,v.optString("name","Untitled"),ch.name,v.optString("thumbnailPath"),v.optLong("duration"),v.optLong("views"),ch.service,v.optString("url"),ch.id,ch.url)}
+        }
+    }
     suspend fun searchPlaylists(service:ServiceProvider,q:String):List<PlaylistItem> = withContext(Dispatchers.IO){
         if(service==ServiceProvider.YOUTUBE){
             var error:Exception?=null
