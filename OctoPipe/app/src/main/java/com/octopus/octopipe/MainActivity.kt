@@ -321,12 +321,12 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
   Text("OctoPipe 0.2.0 · Development build",color=Muted,fontSize=12.sp)
  }
 }
-@Composable private fun PlayerPage(player:Player?,info:StreamInfo?,segments:List<SponsorSegment>,loading:Boolean,error:String?,onCaptionMenu:(Boolean)->Unit,captionMenu:Boolean,onDownload:()->Unit,onAudioDownload:()->Unit,onPip:()->Unit,qualityMenu:Boolean,onQualityMenu:(Boolean)->Unit,onQuality:(String)->Unit,selectedQuality:String,fullscreen:Boolean,onFullscreen:(Boolean)->Unit,onResize:()->Unit,resizeMode:Int,onFavorite:(VideoItem)->Unit){
+@Composable private fun PlayerPage(player:Player?,info:StreamInfo?,segments:List<SponsorSegment>,loading:Boolean,error:String?,onCaptionMenu:(Boolean)->Unit,captionMenu:Boolean,onDownload:()->Unit,onAudioDownload:()->Unit,onPip:()->Unit,qualityMenu:Boolean,onQualityMenu:(Boolean)->Unit,onQuality:(String)->Unit,selectedQuality:String,fullscreen:Boolean,onFullscreen:(Boolean)->Unit,onResize:()->Unit,displayMode:Int,onFavorite:(VideoItem)->Unit){
  Column(Modifier.fillMaxSize().then(if(fullscreen)Modifier else Modifier.padding(15.dp)),verticalArrangement=Arrangement.spacedBy(10.dp)){
   if(player!=null&&info!=null){
    if(fullscreen){
     Box(Modifier.fillMaxSize().background(Color.Black)){
-     AndroidView(factory={ctx->PlayerView(ctx).apply{this.player=player;useController=true;resizeMode=resizeMode;setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)}},update={it.player=player;it.resizeMode=resizeMode},modifier=Modifier.fillMaxSize())
+     AndroidView(factory={ctx->PlayerView(ctx).apply{this.player=player;useController=true;resizeMode=displayMode;setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)}},update={it.player=player;it.resizeMode=displayMode},modifier=Modifier.fillMaxSize())
      IconButton(onClick={onFullscreen(false)},modifier=Modifier.align(Alignment.TopEnd).padding(12.dp).background(Color(0x88000000),RoundedCornerShape(30.dp))){Icon(Icons.Outlined.FullscreenExit,null,tint=Color.White)}
     }
    }else{
@@ -338,11 +338,11 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
        info.variants.forEach{variant->DropdownMenuItem(text={Text(variant.label)},onClick={onQuality(variant.label)})}
       }
      }
-     OutlinedButton(onClick=onResize){Icon(Icons.Outlined.AspectRatio,null);Text(when(resizeMode){AspectRatioFrameLayout.RESIZE_MODE_FIT->"Fit";AspectRatioFrameLayout.RESIZE_MODE_ZOOM->"Zoom";else->"Fill"})}
+     OutlinedButton(onClick=onResize){Icon(Icons.Outlined.AspectRatio,null);Text(when(displayMode){AspectRatioFrameLayout.RESIZE_MODE_FIT->"Fit";AspectRatioFrameLayout.RESIZE_MODE_ZOOM->"Zoom";else->"Fill"})}
      Spacer(Modifier.weight(1f))
      IconButton(onClick={onFullscreen(true)}){Icon(Icons.Outlined.Fullscreen,null,tint=Blue)}
     }
-    AndroidView(factory={ctx->PlayerView(ctx).apply{this.player=player;useController=true;resizeMode=resizeMode;setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)}},update={it.player=player;it.resizeMode=resizeMode},modifier=Modifier.fillMaxWidth().height(225.dp).background(Color.Black,RoundedCornerShape(12.dp)))
+    AndroidView(factory={ctx->PlayerView(ctx).apply{this.player=player;useController=true;resizeMode=displayMode;setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)}},update={it.player=player;it.resizeMode=displayMode},modifier=Modifier.fillMaxWidth().height(225.dp).background(Color.Black,RoundedCornerShape(12.dp)))
     Text(info.video.title,color=White,fontSize=16.sp,fontWeight=FontWeight.SemiBold,maxLines=2,overflow=TextOverflow.Ellipsis);Text(info.video.author,color=Muted,fontSize=12.sp)
     Row(horizontalArrangement=Arrangement.spacedBy(5.dp)){
      OutlinedButton(onClick=onDownload,enabled=info.downloadUrl!=null){Icon(Icons.Outlined.Download,null);Text("Video")}
@@ -427,8 +427,8 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),DISCOVE
     Spacer(Modifier.width(12.dp));Column(Modifier.weight(1f)){Text(channel.name,color=White,fontWeight=FontWeight.Bold,fontSize=18.sp,maxLines=2);Text(channel.service,color=Muted,fontSize=11.sp)}
     Button(onClick={onSubscribe(channel)}){Text(if(following)"Following" else "Subscribe")}
    }
-   item{Heading("Latest videos","Videos published by this creator")}
   }
+  if(channel!=null)item{Heading("Latest videos","Videos published by this creator")}
   if(loading)item{CircularProgressIndicator(color=Blue)}
   if(error!=null)item{ErrorLabel(error)}
   if(videos.isEmpty()&&!loading)item{EmptyCard("No videos were returned for this channel.")}
