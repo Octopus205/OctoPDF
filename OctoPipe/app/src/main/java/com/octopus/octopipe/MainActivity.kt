@@ -207,7 +207,8 @@ private enum class Tab(val label:String){HOME("Home"),EXPLORE("Explore"),LIBRARY
      })
     }
    }
-   if(info.downloadUrl==null)Text("Offline download unavailable for this stream format.",color=Muted,fontSize=11.sp)\n   if(segments.isNotEmpty())Text("SponsorBlock active · "+segments.size+" segments",color=Blue,fontSize=12.sp)
+   if(info.downloadUrl==null)Text("Offline download unavailable for this stream format.",color=Muted,fontSize=11.sp)
+   if(segments.isNotEmpty())Text("SponsorBlock active · "+segments.size+" segments",color=Blue,fontSize=12.sp)
    Text("Background audio is managed by the media session service.",color=Muted,fontSize=11.sp)
   }else EmptyCard("Select a video from Search or Explore to start playback.")
   if(error!=null)ErrorLabel(error)
