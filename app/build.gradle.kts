@@ -10,8 +10,8 @@ android {
         applicationId = "com.octopus.octopdf"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
     }
     buildTypes { release { isMinifyEnabled = false } }
@@ -19,12 +19,12 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    buildFeatures { compose = true }
-}
-kotlin {
-    compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
     }
+    buildFeatures { compose = true }
 }
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))

@@ -23,6 +23,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.History
@@ -175,7 +178,7 @@ private fun decodeRecent(raw: String): RecentDocument? {
     }.getOrNull()
 }
 
-private enum class AppSection { READER, SPLIT, RECENT, ENGINE }
+private enum class AppSection { READER, SPLIT, RECENT, TOOLS, SETTINGS, ENGINE }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -308,10 +311,11 @@ private fun OctoPdfApp(incomingUri: Uri?) {
                         )
                     }
                 ) {
+                    RailDestination("الرئيسية", Icons.Default.Home, section == AppSection.RECENT) { section = AppSection.RECENT }
                     RailDestination("القارئ", Icons.Default.MenuBook, section == AppSection.READER) { section = AppSection.READER }
-                    RailDestination("تقسيم الشاشة", Icons.Default.ViewColumn, section == AppSection.SPLIT) { section = AppSection.SPLIT }
-                    RailDestination("الأخيرة", Icons.Default.History, section == AppSection.RECENT) { section = AppSection.RECENT }
-                    RailDestination("محرك PDF", Icons.Default.Memory, section == AppSection.ENGINE) { section = AppSection.ENGINE }
+                    RailDestination("أدوات PDF", Icons.Default.Build, section == AppSection.TOOLS) { section = AppSection.TOOLS }
+                    RailDestination("تقسيم", Icons.Default.ViewColumn, section == AppSection.SPLIT) { section = AppSection.SPLIT }
+                    RailDestination("الإعدادات", Icons.Default.Settings, section == AppSection.SETTINGS || section == AppSection.ENGINE) { section = AppSection.SETTINGS }
                 }
             }
 
@@ -337,7 +341,9 @@ private fun OctoPdfApp(incomingUri: Uri?) {
                                     when (section) {
                                         AppSection.READER -> "مساحة القراءة"
                                         AppSection.SPLIT -> "عرض مستندين"
-                                        AppSection.RECENT -> "ملفاتك ومستنداتك"
+                                        AppSection.RECENT -> "مكتبة مستنداتك"
+                                        AppSection.TOOLS -> "إدارة ومعالجة ملفات PDF"
+                                        AppSection.SETTINGS -> "تفضيلات التطبيق"
                                         AppSection.ENGINE -> "تقنيات التطبيق"
                                     },
                                     fontSize = 10.sp, color = TextMuted
@@ -477,20 +483,53 @@ private fun OctoPdfApp(incomingUri: Uri?) {
                                 )
                             }
                         }
+                        AppSection.TOOLS -> PdfToolsScreen(Modifier.fillMaxSize())
+                        AppSection.SETTINGS -> SettingsScreen(onEngineClick = { section = AppSection.ENGINE })
                         AppSection.ENGINE -> EngineInfoScreen()
                     }
                 }
 
                 if (!tablet) {
                     NavigationBar(containerColor = Color(0xFF0D1724), contentColor = TextMuted) {
-                        BottomDestination("القارئ", Icons.Default.MenuBook, section == AppSection.READER) { section = AppSection.READER }
-                        BottomDestination("تقسيم", Icons.Default.ViewColumn, section == AppSection.SPLIT) { section = AppSection.SPLIT }
-                        BottomDestination("الأخيرة", Icons.Default.History, section == AppSection.RECENT) { section = AppSection.RECENT }
-                        BottomDestination("المحرك", Icons.Default.Memory, section == AppSection.ENGINE) { section = AppSection.ENGINE }
+                        NavigationBarItem(selected = section == AppSection.RECENT, onClick = { section = AppSection.RECENT },
+                            icon = { Icon(Icons.Default.Home, contentDescription = "الرئيسية") }, label = { Text("الرئيسية", fontSize = 10.sp) })
+                        NavigationBarItem(selected = section == AppSection.READER, onClick = { section = AppSection.READER },
+                            icon = { Icon(Icons.Default.MenuBook, contentDescription = "القارئ") }, label = { Text("القارئ", fontSize = 10.sp) })
+                        NavigationBarItem(selected = section == AppSection.TOOLS, onClick = { section = AppSection.TOOLS },
+                            icon = { Icon(Icons.Default.Build, contentDescription = "أدوات PDF") }, label = { Text("الأدوات", fontSize = 10.sp) })
+                        NavigationBarItem(selected = section == AppSection.SPLIT, onClick = { section = AppSection.SPLIT },
+                            icon = { Icon(Icons.Default.ViewColumn, contentDescription = "تقسيم") }, label = { Text("تقسيم", fontSize = 10.sp) })
+                        NavigationBarItem(selected = section == AppSection.SETTINGS || section == AppSection.ENGINE, onClick = { section = AppSection.SETTINGS },
+                            icon = { Icon(Icons.Default.Settings, contentDescription = "الإعدادات") }, label = { Text("الإعدادات", fontSize = 10.sp) })
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SettingsScreen(onEngineClick: () -> Unit) {
+    Column(
+        Modifier.fillMaxSize().background(Ink).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Text("الإعدادات", fontSize = 25.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+        Text("إعدادات OctoPDF ومعلومات التطبيق", color = TextMuted, fontSize = 13.sp)
+        Surface(color = Panel, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(17.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Text("المظهر", color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                Text("واجهة داكنة ثابتة بألوان OctoPDF لتوفير تجربة قراءة مريحة.", color = TextMuted, fontSize = 12.sp)
+                Text("الخصوصية", color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                Text("عمليات فتح وقراءة ومعالجة الملفات تتم محليًا على جهازك.", color = TextMuted, fontSize = 12.sp)
+            }
+        }
+        OutlinedButton(onClick = onEngineClick, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Default.Memory, null)
+            Spacer(Modifier.width(8.dp))
+            Text("معلومات محرك PDF")
+        }
+        Text("OctoPDF • Offline-first PDF workspace", color = TextMuted, fontSize = 11.sp)
     }
 }
 
@@ -764,6 +803,8 @@ private fun ReaderScreen(
     var searchLoading by remember(uri) { mutableStateOf(false) }
     var searchHasRun by remember(uri) { mutableStateOf(false) }
     var searchError by remember(uri) { mutableStateOf<String?>(null) }
+    var pageJumpOpen by remember(uri) { mutableStateOf(false) }
+    var requestedPage by remember(uri) { mutableStateOf((resumePage + 1).toString()) }
 
     fun performPdfSearch() {
         val query = searchQuery.trim()
@@ -836,6 +877,25 @@ private fun ReaderScreen(
                                     )
                                 }
                             }
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text("الانتقال إلى صفحة محددة") },
+                                onClick = {
+                                    requestedPage = pageNumber.toString()
+                                    pageJumpOpen = true
+                                    menuExpanded = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("الصفحة السابقة") },
+                                enabled = pageNumber > 1,
+                                onClick = { pdfView?.jumpTo((pageNumber - 2).coerceAtLeast(0), true); menuExpanded = false }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("الصفحة التالية") },
+                                enabled = totalPages > 0 && pageNumber < totalPages,
+                                onClick = { pdfView?.jumpTo(pageNumber.coerceAtLeast(0), true); menuExpanded = false }
+                            )
                         }
                     }
                 }
@@ -928,6 +988,31 @@ private fun ReaderScreen(
                 }
             }
         }
+    }
+
+    if (pageJumpOpen) {
+        AlertDialog(
+            onDismissRequest = { pageJumpOpen = false },
+            title = { Text("الانتقال إلى صفحة") },
+            text = {
+                OutlinedTextField(
+                    value = requestedPage,
+                    onValueChange = { requestedPage = it.filter(Char::isDigit).take(6) },
+                    singleLine = true,
+                    label = { Text(if (totalPages > 0) "رقم الصفحة (1-$totalPages)" else "رقم الصفحة") }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val target = requestedPage.toIntOrNull()
+                    if (target != null && target in 1..totalPages) {
+                        pdfView?.jumpTo(target - 1, true)
+                        pageJumpOpen = false
+                    }
+                }, enabled = requestedPage.toIntOrNull()?.let { it in 1..totalPages } == true) { Text("انتقال") }
+            },
+            dismissButton = { TextButton(onClick = { pageJumpOpen = false }) { Text("إلغاء") } }
+        )
     }
 
     if (searchOpen) {
