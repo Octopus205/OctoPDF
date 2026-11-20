@@ -55,19 +55,16 @@ internal fun PdfToolsScreen(modifier: Modifier = Modifier) {
     var status by remember { mutableStateOf("اختر أداة ثم حدد ملفات PDF للبدء.") }
     var busy by remember { mutableStateOf(false) }
 
-    val sourcePicker = rememberLauncherForActivityResult(
-        if (operation == PdfOperation.MERGE) ActivityResultContracts.OpenMultipleDocuments()
-        else ActivityResultContracts.OpenDocument()
-    ) { result ->
-        @Suppress("UNCHECKED_CAST")
-        val selected = when (result) {
-            is List<*> -> result.filterIsInstance<Uri>()
-            is Uri -> listOf(result)
-            else -> emptyList()
+    val singlePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            sources = listOf(uri)
+            status = "تم اختيار الملف: ${uri.lastPathSegment}"
         }
-        if (selected.isNotEmpty()) {
-            sources = selected
-            status = if (operation == PdfOperation.MERGE) "تم اختيار ${selected.size} ملفات." else "تم اختيار الملف: ${selected.first().lastPathSegment}"
+    }
+    val multiPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) {
+            sources = uris
+            status = "تم اختيار ${uris.size} ملفات."
         }
     }
 
@@ -155,11 +152,8 @@ internal fun PdfToolsScreen(modifier: Modifier = Modifier) {
             item {
                 Button(
                     onClick = {
-                        if (operation == PdfOperation.MERGE) {
-                            sourcePicker.launch(arrayOf("application/pdf"))
-                        } else {
-                            sourcePicker.launch(arrayOf("application/pdf"))
-                        }
+                        if (operation == PdfOperation.MERGE) multiPicker.launch(arrayOf("application/pdf"))
+                        else singlePicker.launch(arrayOf("application/pdf"))
                     },
                     modifier = Modifier.fillMaxWidth().height(52.dp),
                     enabled = !busy && (operation != PdfOperation.PROTECT || password.length >= 4)
