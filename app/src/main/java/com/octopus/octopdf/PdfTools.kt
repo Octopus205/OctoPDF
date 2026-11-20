@@ -86,15 +86,15 @@ internal fun PdfToolsScreen(modifier: Modifier = Modifier) {
         }
     }
 
-    Column(modifier.fillMaxSize().background(Color(0xFF0A111B))) {
+    Column(modifier.fillMaxSize().background(Color(0xFF0B0D12))) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(horizontal = 18.dp, vertical = 20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             item {
-                Text("أدوات PDF", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Color(0xFFF3F7FC))
-                Text("إدارة ملفاتك محليًا على الجهاز دون رفعها إلى أي خادم.", color = Color(0xFFA9B9CA), fontSize = 13.sp)
+                Text("أدوات PDF", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Color(0xFFF5F6FC))
+                Text("إدارة ملفاتك محليًا على الجهاز دون رفعها إلى أي خادم.", color = Color(0xFF9AA5B8), fontSize = 13.sp)
             }
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -102,9 +102,9 @@ internal fun PdfToolsScreen(modifier: Modifier = Modifier) {
                         val selected = operation == item
                         Surface(
                             onClick = { operation = item; sources = emptyList() },
-                            color = if (selected) Color(0xFF173A4A) else Color(0xFF152535),
+                            color = if (selected) Color(0xFF292443) else Color(0xFF171C27),
                             shape = RoundedCornerShape(16.dp),
-                            border = if (selected) androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF28B9A8)) else null
+                            border = if (selected) androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF8B7CFF)) else null
                         ) {
                             Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
@@ -114,12 +114,12 @@ internal fun PdfToolsScreen(modifier: Modifier = Modifier) {
                                         PdfOperation.ROTATE -> Icons.Default.RotateRight
                                         PdfOperation.REORDER -> Icons.Default.Reorder
                                         PdfOperation.PROTECT -> Icons.Default.Lock
-                                    }, null, tint = Color(0xFF53E0CF), modifier = Modifier.size(25.dp)
+                                    }, null, tint = Color(0xFF66C8FF), modifier = Modifier.size(25.dp)
                                 )
                                 Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
-                                    Text(item.title, color = Color(0xFFF3F7FC), fontWeight = FontWeight.SemiBold)
-                                    Text(item.description, color = Color(0xFFA9B9CA), fontSize = 11.sp)
+                                    Text(item.title, color = Color(0xFFF5F6FC), fontWeight = FontWeight.SemiBold)
+                                    Text(item.description, color = Color(0xFF9AA5B8), fontSize = 11.sp)
                                 }
                                 RadioButton(selected = selected, onClick = { operation = item; sources = emptyList() })
                             }
@@ -163,23 +163,23 @@ internal fun PdfToolsScreen(modifier: Modifier = Modifier) {
                     Text(if (operation == PdfOperation.MERGE) "اختيار ملفات PDF" else "اختيار ملف PDF")
                 }
                 if (sources.isNotEmpty()) {
-                    Text("الملفات المحددة: ${sources.size}", color = Color(0xFF53E0CF), fontSize = 12.sp)
+                    Text("الملفات المحددة: ${sources.size}", color = Color(0xFF66C8FF), fontSize = 12.sp)
                     Button(onClick = { outputPicker.launch(outputName.ifBlank { "OctoPDF-Result.pdf" }) },
                         modifier = Modifier.fillMaxWidth(), enabled = !busy) { Text("تنفيذ وحفظ النتيجة") }
                 }
             }
             item {
-                Surface(color = Color(0xFF152535), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                Surface(color = Color(0xFF171C27), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
                     Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        if (busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = Color(0xFF53E0CF))
-                        else Icon(Icons.Default.FolderOpen, null, tint = Color(0xFF53E0CF))
+                        if (busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = Color(0xFF66C8FF))
+                        else Icon(Icons.Default.FolderOpen, null, tint = Color(0xFF66C8FF))
                         Spacer(Modifier.width(10.dp))
-                        Text(status, color = Color(0xFFA9B9CA), fontSize = 12.sp)
+                        Text(status, color = Color(0xFF9AA5B8), fontSize = 12.sp)
                     }
                 }
             }
             item {
-                Text("ملاحظة: الملفات الأصلية لا يتم تعديلها؛ كل عملية تنشئ ملفًا جديدًا.", color = Color(0xFFA9B9CA), fontSize = 11.sp)
+                Text("ملاحظة: الملفات الأصلية لا يتم تعديلها؛ كل عملية تنشئ ملفًا جديدًا.", color = Color(0xFF9AA5B8), fontSize = 11.sp)
             }
         }
     }

@@ -75,14 +75,15 @@ private val FAVORITES_KEY = stringPreferencesKey("favorite_documents")
 private val OPEN_TABS_KEY = stringPreferencesKey("open_tabs")
 private val ACTIVE_TAB_KEY = stringPreferencesKey("active_tab")
 
-private val Ink = Color(0xFF0A111B)
-private val Navy = Color(0xFF111F2E)
-private val Panel = Color(0xFF152535)
-private val PanelLight = Color(0xFF20394A)
-private val Accent = Color(0xFF28B9A8)
-private val Cyan = Color(0xFF53E0CF)
-private val TextPrimary = Color(0xFFF3F7FC)
-private val TextMuted = Color(0xFFA9B9CA)
+// OctoPDF graphite + electric-violet design system.
+private val Ink = Color(0xFF0B0D12)
+private val Navy = Color(0xFF11151F)
+private val Panel = Color(0xFF171C27)
+private val PanelLight = Color(0xFF252D3D)
+private val Accent = Color(0xFF8B7CFF)
+private val Cyan = Color(0xFF66C8FF)
+private val TextPrimary = Color(0xFFF5F6FC)
+private val TextMuted = Color(0xFF9AA5B8)
 
 private enum class ReadingMode { LIGHT, NIGHT }
 
@@ -320,7 +321,7 @@ private fun OctoPdfApp(incomingUri: Uri?) {
             }
 
             Column(Modifier.weight(1f).fillMaxHeight()) {
-                Surface(color = Color(0xFF101D2B), tonalElevation = 2.dp) {
+                Surface(color = Navy, tonalElevation = 2.dp) {
                     Column {
                         Row(
                             Modifier.fillMaxWidth().height(58.dp).padding(horizontal = 16.dp),
@@ -349,14 +350,14 @@ private fun OctoPdfApp(incomingUri: Uri?) {
                                     fontSize = 10.sp, color = TextMuted
                                 )
                             }
-                            Surface(color = Color(0xFF123A3A), shape = RoundedCornerShape(50)) {
+                            Surface(color = Color(0xFF25213F), shape = RoundedCornerShape(50)) {
                                 Row(
                                     Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(5.dp)
                                 ) {
                                     Box(Modifier.size(6.dp).clip(CircleShape).background(Cyan))
-                                    Text("يعمل دون إنترنت", color = Color(0xFF8DE8D8), fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                                    Text("يعمل دون إنترنت", color = Color(0xFFC2B9FF), fontSize = 10.sp, fontWeight = FontWeight.Medium)
                                 }
                             }
                             IconButton(onClick = { picker.launch(arrayOf("application/pdf")) }) {
@@ -366,7 +367,7 @@ private fun OctoPdfApp(incomingUri: Uri?) {
                         if ((section == AppSection.READER || section == AppSection.SPLIT) && openTabs.isNotEmpty()) {
                             androidx.compose.foundation.lazy.LazyRow(
                                 modifier = Modifier.fillMaxWidth().height(44.dp)
-                                    .background(Color(0xFF0B1420)),
+                                    .background(Color(0xFF0E1118)),
                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
@@ -379,7 +380,7 @@ private fun OctoPdfApp(incomingUri: Uri?) {
                                             section = AppSection.READER
                                             openAttempt++
                                         },
-                                        color = if (active) Color(0xFF173A4A) else Color(0xFF142333),
+                                        color = if (active) Color(0xFF292443) else Color(0xFF191F2B),
                                         shape = RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp),
                                         border = if (active) androidx.compose.foundation.BorderStroke(1.dp, Accent.copy(alpha = 0.45f)) else null
                                     ) {
@@ -422,7 +423,9 @@ private fun OctoPdfApp(incomingUri: Uri?) {
                                     modifier = Modifier.fillMaxSize(),
                                     onOpen = { openDocument(it.uri, it.name) },
                                     onToggleFavorite = { toggleFavorite(it) },
-                                    onPick = { picker.launch(arrayOf("application/pdf")) }
+                                    onPick = { picker.launch(arrayOf("application/pdf")) },
+                                    onTools = { section = AppSection.TOOLS },
+                                    onSplit = { section = AppSection.SPLIT }
                                 )
                             } else {
                                 ReaderScreen(
@@ -439,7 +442,9 @@ private fun OctoPdfApp(incomingUri: Uri?) {
                             modifier = Modifier.fillMaxSize(),
                             onOpen = { openDocument(it.uri, it.name) },
                             onToggleFavorite = { toggleFavorite(it) },
-                            onPick = { picker.launch(arrayOf("application/pdf")) }
+                            onPick = { picker.launch(arrayOf("application/pdf")) },
+                            onTools = { section = AppSection.TOOLS },
+                            onSplit = { section = AppSection.SPLIT }
                         )
                         AppSection.SPLIT -> {
                             val left = selectedUri
@@ -635,59 +640,100 @@ private fun HomeScreen(
     modifier: Modifier = Modifier,
     onOpen: (RecentDocument) -> Unit,
     onToggleFavorite: (RecentDocument) -> Unit,
-    onPick: () -> Unit
+    onPick: () -> Unit,
+    onTools: () -> Unit,
+    onSplit: () -> Unit
 ) {
     BoxWithConstraints(modifier.background(Ink)) {
         val tablet = maxWidth >= 600.dp
-        val contentWidth = if (tablet) 720.dp else maxWidth
+        val contentWidth = if (tablet) 900.dp else maxWidth
         var showFavoritesOnly by remember { mutableStateOf(false) }
         val visibleDocuments = remember(recent, favoriteUris, showFavoritesOnly) {
             if (showFavoritesOnly) recent.filter { it.uri.toString() in favoriteUris } else recent
         }
         LazyColumn(
             modifier = Modifier.widthIn(max = contentWidth).align(Alignment.TopCenter).fillMaxWidth()
-                .padding(horizontal = if (tablet) 28.dp else 18.dp),
-            contentPadding = PaddingValues(top = 22.dp, bottom = 36.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
+                .padding(horizontal = if (tablet) 30.dp else 18.dp),
+            contentPadding = PaddingValues(top = 22.dp, bottom = 34.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(28.dp),
+                    shape = RoundedCornerShape(26.dp),
                     colors = CardDefaults.cardColors(containerColor = Navy),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
-                    Column(Modifier.padding(if (tablet) 30.dp else 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Box(Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)).background(PanelLight), contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.PictureAsPdf, null, tint = Accent, modifier = Modifier.size(30.dp))
+                    Column(
+                        Modifier.fillMaxWidth().padding(if (tablet) 28.dp else 21.dp),
+                        verticalArrangement = Arrangement.spacedBy(15.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text("مساحة عملك للمستندات", color = TextMuted, fontSize = 12.sp)
+                                Text("كل ملفاتك. في مكان واحد.", fontSize = if (tablet) 27.sp else 23.sp, fontWeight = FontWeight.Bold)
+                                Text("اقرأ، نظّم، وأنجز ملفات PDF بسهولة.", color = TextMuted, fontSize = 13.sp)
                             }
-                            Column {
-                                Text("مرحباً بك في OctoPDF", fontWeight = FontWeight.Bold, fontSize = 19.sp)
-                                Text("قارئ PDF يعمل بدون إنترنت", color = TextMuted, fontSize = 12.sp)
+                            Box(
+                                Modifier.size(if (tablet) 76.dp else 62.dp)
+                                    .clip(RoundedCornerShape(22.dp))
+                                    .background(Color(0xFF25213F)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.PictureAsPdf, null, tint = Accent, modifier = Modifier.size(38.dp))
                             }
                         }
-                        Text("ملفاتك، مرتبة. وقراءتك، أسهل.", fontSize = if (tablet) 28.sp else 24.sp, fontWeight = FontWeight.Bold)
-                        Text(
-                            "افتح مستنداتك واقرأها في مساحة هادئة، مع الاحتفاظ بملفاتك الأخيرة على جهازك.",
-                            color = Color(0xFFD0DCE8), lineHeight = 23.sp
-                        )
-                        Button(onClick = onPick, modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(16.dp)) {
+                        Button(
+                            onClick = onPick,
+                            modifier = Modifier.fillMaxWidth().height(54.dp),
+                            shape = RoundedCornerShape(15.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Color.White)
+                        ) {
                             Icon(Icons.Default.FolderOpen, null)
-                            Spacer(Modifier.width(10.dp))
-                            Text("اختيار ملف PDF", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                            Spacer(Modifier.width(9.dp))
+                            Text("فتح ملف PDF", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            }
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Surface(
+                        onClick = onTools,
+                        modifier = Modifier.weight(1f),
+                        color = Panel,
+                        shape = RoundedCornerShape(18.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF293044))
+                    ) {
+                        Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                            Icon(Icons.Default.Build, null, tint = Cyan, modifier = Modifier.size(24.dp))
+                            Text("أدوات PDF", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            Text("دمج، تقسيم، تدوير وحماية", color = TextMuted, fontSize = 10.sp, maxLines = 1)
+                        }
+                    }
+                    Surface(
+                        onClick = onSplit,
+                        modifier = Modifier.weight(1f),
+                        color = Panel,
+                        shape = RoundedCornerShape(18.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF293044))
+                    ) {
+                        Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                            Icon(Icons.Default.ViewColumn, null, tint = Accent, modifier = Modifier.size(24.dp))
+                            Text("مقارنة مستندين", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            Text("افتح ملفين جنبًا إلى جنب", color = TextMuted, fontSize = 10.sp, maxLines = 1)
                         }
                     }
                 }
             }
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("المستندات الأخيرة", fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                        Text(recent.size.toString() + " مستند محفوظ في القائمة", color = TextMuted, fontSize = 12.sp)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text("ملفاتك", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                        Text("\${recent.size} مستند في سجلّك", color = TextMuted, fontSize = 12.sp)
                     }
-                    Surface(color = Panel, shape = CircleShape) {
-                        Icon(Icons.Default.Description, null, tint = Accent, modifier = Modifier.padding(10.dp).size(20.dp))
+                    Surface(color = PanelLight, shape = RoundedCornerShape(12.dp)) {
+                        Icon(Icons.Default.Description, null, tint = Cyan, modifier = Modifier.padding(10.dp).size(19.dp))
                     }
                 }
             }
@@ -696,34 +742,49 @@ private fun HomeScreen(
                     FilterChip(
                         selected = !showFavoritesOnly,
                         onClick = { showFavoritesOnly = false },
-                        label = { Text("الكل") }
+                        label = { Text("الكل") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Color(0xFF292443),
+                            selectedLabelColor = TextPrimary
+                        )
                     )
                     FilterChip(
                         selected = showFavoritesOnly,
                         onClick = { showFavoritesOnly = true },
                         leadingIcon = { Icon(Icons.Default.Star, null, modifier = Modifier.size(16.dp)) },
-                        label = { Text("المفضلة · ${favoriteUris.size}") }
+                        label = { Text("المفضلة · \${favoriteUris.size}") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Color(0xFF292443),
+                            selectedLabelColor = TextPrimary
+                        )
                     )
                 }
             }
             if (visibleDocuments.isEmpty()) {
                 item {
-                    Surface(color = Panel, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                    Surface(
+                        color = Panel,
+                        shape = RoundedCornerShape(20.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         Column(
-                            Modifier.fillMaxWidth().padding(24.dp),
+                            Modifier.fillMaxWidth().padding(27.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Icon(Icons.Default.Book, null, tint = TextMuted, modifier = Modifier.size(36.dp))
+                            Icon(Icons.Default.Book, null, tint = TextMuted, modifier = Modifier.size(34.dp))
                             Text(
-                                if (showFavoritesOnly) "لا توجد مستندات مفضلة بعد" else "لا توجد مستندات بعد",
+                                if (showFavoritesOnly) "لا توجد ملفات مفضلة بعد" else "مكتبتك جاهزة",
                                 fontWeight = FontWeight.SemiBold
                             )
                             Text(
-                                if (showFavoritesOnly) "اضغط على النجمة بجوار أي مستند لإضافته للمفضلة."
-                                else "اختر ملف PDF من جهازك وسيظهر هنا تلقائياً.",
-                                color = TextMuted, fontSize = 13.sp
+                                if (showFavoritesOnly) "أضف أي مستند إلى المفضلة باستخدام النجمة."
+                                else "افتح أول ملف PDF وسيظهر هنا لتعود إليه لاحقًا.",
+                                color = TextMuted, fontSize = 12.sp
                             )
+                            if (!showFavoritesOnly) {
+                                TextButton(onClick = onPick) { Text("اختيار ملف", color = Cyan) }
+                            }
                         }
                     }
                 }
@@ -732,20 +793,23 @@ private fun HomeScreen(
                     Card(
                         onClick = { onOpen(doc) },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(18.dp),
+                        shape = RoundedCornerShape(17.dp),
                         colors = CardDefaults.cardColors(containerColor = Panel)
                     ) {
                         Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 15.dp),
+                            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 13.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            Box(Modifier.size(46.dp).clip(RoundedCornerShape(13.dp)).background(PanelLight), contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.PictureAsPdf, null, tint = Accent, modifier = Modifier.size(27.dp))
+                            Box(
+                                Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(PanelLight),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.PictureAsPdf, null, tint = Accent, modifier = Modifier.size(25.dp))
                             }
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Text(doc.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
-                                Text("مستند PDF", color = TextMuted, fontSize = 11.sp)
+                                Text(doc.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                                Text("ملف PDF", color = TextMuted, fontSize = 11.sp)
                             }
                             IconButton(onClick = { onToggleFavorite(doc) }) {
                                 Icon(
@@ -754,13 +818,18 @@ private fun HomeScreen(
                                     tint = if (doc.uri.toString() in favoriteUris) Color(0xFFFFC857) else TextMuted
                                 )
                             }
-                            Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = Accent)
+                            Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = Cyan, modifier = Modifier.size(18.dp))
                         }
                     }
                 }
             }
             item {
-                Text("OctoPDF  •  قارئ ومحرر PDF", color = TextMuted, fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+                Text(
+                    "OCTOPDF  •  OFFLINE PDF WORKSPACE",
+                    color = Color(0xFF687386),
+                    fontSize = 10.sp,
+                    modifier = Modifier.fillMaxWidth().padding(top = 7.dp)
+                )
             }
         }
     }
