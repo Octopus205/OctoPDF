@@ -803,6 +803,8 @@ private fun ReaderScreen(
     var searchLoading by remember(uri) { mutableStateOf(false) }
     var searchHasRun by remember(uri) { mutableStateOf(false) }
     var searchError by remember(uri) { mutableStateOf<String?>(null) }
+    var pageJumpOpen by remember(uri) { mutableStateOf(false) }
+    var requestedPage by remember(uri) { mutableStateOf((resumePage + 1).toString()) }
 
     fun performPdfSearch() {
         val query = searchQuery.trim()
@@ -875,6 +877,25 @@ private fun ReaderScreen(
                                     )
                                 }
                             }
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text("الانتقال إلى صفحة محددة") },
+                                onClick = {
+                                    requestedPage = pageNumber.toString()
+                                    pageJumpOpen = true
+                                    menuExpanded = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("الصفحة السابقة") },
+                                enabled = pageNumber > 1,
+                                onClick = { pdfView?.jumpTo((pageNumber - 2).coerceAtLeast(0), true); menuExpanded = false }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("الصفحة التالية") },
+                                enabled = totalPages > 0 && pageNumber < totalPages,
+                                onClick = { pdfView?.jumpTo(pageNumber.coerceAtLeast(0), true); menuExpanded = false }
+                            )
                         }
                     }
                 }
@@ -967,6 +988,31 @@ private fun ReaderScreen(
                 }
             }
         }
+    }
+
+    if (pageJumpOpen) {
+        AlertDialog(
+            onDismissRequest = { pageJumpOpen = false },
+            title = { Text("الانتقال إلى صفحة") },
+            text = {
+                OutlinedTextField(
+                    value = requestedPage,
+                    onValueChange = { requestedPage = it.filter(Char::isDigit).take(6) },
+                    singleLine = true,
+                    label = { Text(if (totalPages > 0) "رقم الصفحة (1-$totalPages)" else "رقم الصفحة") }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val target = requestedPage.toIntOrNull()
+                    if (target != null && target in 1..totalPages) {
+                        pdfView?.jumpTo(target - 1, true)
+                        pageJumpOpen = false
+                    }
+                }, enabled = requestedPage.toIntOrNull()?.let { it in 1..totalPages } == true) { Text("انتقال") }
+            },
+            dismissButton = { TextButton(onClick = { pageJumpOpen = false }) { Text("إلغاء") } }
+        )
     }
 
     if (searchOpen) {
