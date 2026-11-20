@@ -3,9 +3,11 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
 android {
     namespace = "com.octopus.octopdf"
     compileSdk = 36
+
     defaultConfig {
         applicationId = "com.octopus.octopdf"
         minSdk = 26
@@ -14,18 +16,27 @@ android {
         versionName = "0.3.0"
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
     }
-    buildTypes { release { isMinifyEnabled = false } }
+
+    buildTypes {
+        release { isMinifyEnabled = false }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlin {
-        compilerOptions {
-            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-        }
+
+    buildFeatures {
+        compose = true
     }
-    buildFeatures { compose = true }
 }
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}
+
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.activity:activity-compose:1.10.0")
